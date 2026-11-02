@@ -241,7 +241,16 @@ scripts\build_desktop_app.bat         # Windows        -> dist\GestureSlice\Gest
 ```
 
 This uses PyInstaller and bundles Python, the libraries and the MediaPipe
-hand model into one app you can launch without a terminal.
+hand model into one app you can launch without a terminal (about 30 s to
+build, ~260 MB, mostly OpenCV and MediaPipe).
+
+- **macOS:** double-click `dist/GestureSlice.app` (or drag it into *Applications*).
+  On first launch macOS asks for camera permission for *Gesture Slice*. Click Allow.
+  On a different Mac, the unsigned app must be opened once with
+  *right-click → Open* to get past Gatekeeper.
+- **Windows:** run `dist\GestureSlice\GestureSlice.exe`.
+- The packaged app stores its database in `~/.gesture_slice/`, because the app bundle itself is read-only.
+- `dist/` and `build/` are git-ignored, so build the app on the computer that will run it.
 
 ---
 
