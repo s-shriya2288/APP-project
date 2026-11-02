@@ -1,0 +1,31 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    name: Lint + unit tests (Python ${{ matrix.python }})
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python: ["3.10", "3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+
+      # The unit tests need no camera, no window and no MediaPipe:
+      # game logic, gestures and the database are independent of Tkinter.
+      - name: Install test dependencies
+        run: pip install "numpy>=1.24,<3" "Pillow>=10.0" pyflakes
+
+      - name: Lint (pyflakes)
+        run: pyflakes main.py gesture_slice tests tools
+
+      - name: Unit tests
+        run: python -m unittest discover -s tests -v
