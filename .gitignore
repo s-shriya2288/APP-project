@@ -11,7 +11,7 @@ data/
 # Desktop app build output
 build/
 dist/
-*.spec.bak
+*.spec
 
 # OS / editor
 .DS_Store
