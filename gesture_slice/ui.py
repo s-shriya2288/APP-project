@@ -14,7 +14,10 @@ Main loop (App._tick, scheduled with root.after every ~16 ms):
 """
 
 import math
+import os
 import random
+import subprocess
+import sys
 import time
 import tkinter as tk
 import tkinter.font as tkfont
@@ -817,14 +820,60 @@ class App:
                                       font=self.fonts.get(10, "bold"), tags=(T,))
         self.cursor_glow = c.create_image(-100, -100, image=self.sprites.cursor_glow, tags=(T,))
         self.cursor_dot = c.create_oval(0, 0, 0, 0, fill="#ffffff", outline=COL["accent2"], width=2, tags=(T,))
+        self._build_camera_help()
+
+    def _build_camera_help(self):
+        """Panel shown when the webcam can't be opened (e.g. macOS blocked it)."""
+        c, T = self.canvas, "camhelp"
+        cx, cy = 16 + 180, H - 122
+        draw_panel(c, (T,), cx, cy, 360, 118, radius=18, fill="#2a0f2e", outline=COL["danger"])
+        if sys.platform == "darwin":
+            text = ("Camera is blocked, so hand control is off. Open Camera Settings, switch ON "
+                    "'Gesture Slice' (or your Terminal), then press Retry or reopen the app.")
+        else:
+            text = ("Camera can't be opened, so hand control is off. Close other apps using the "
+                    "camera, check camera privacy settings, then press Retry.")
+        c.create_text(cx - 164, cy - 50, anchor="nw", width=328, text=text, fill=COL["text"],
+                      font=self.fonts.get(10, "bold"), tags=(T,))
+        self.camhelp_buttons = [
+            CanvasButton(self, T, cx - 78, cy + 34, 172, 34, "CAMERA SETTINGS", self.open_camera_settings,
+                         "danger", font_size=12),
+            CanvasButton(self, T, cx + 100, cy + 34, 136, 34, "RETRY CAMERA", lambda: self.start_tracker(),
+                         "secondary", font_size=12),
+        ]
+        self._camhelp_visible = True
+        self._set_camera_help(False)
+
+    def _set_camera_help(self, visible):
+        if visible == self._camhelp_visible:
+            return
+        self._camhelp_visible = visible
+        self.canvas.itemconfigure("camhelp", state="normal" if visible else "hidden")
+        for b in self.camhelp_buttons:
+            self.canvas.itemconfigure(b.bar, state="hidden")
+        if visible:
+            self.canvas.tag_raise("camhelp")
+
+    def open_camera_settings(self):
+        """Open the operating system's camera privacy page (the user changes it there)."""
+        try:
+            if sys.platform == "darwin":
+                subprocess.Popen(["open", "x-apple.systempreferences:com.apple.preference.security?Privacy_Camera"])
+            elif sys.platform.startswith("win"):
+                os.startfile("ms-settings:privacy-webcam")
+            else:
+                self.toast("Check that no other program is using the camera, then press Retry.", COL["warning"])
+        except Exception as exc:
+            self.toast(f"Could not open camera settings: {exc}", COL["danger"])
 
     def raise_overlay(self):
         self.canvas.tag_raise("overlay")
+        self.canvas.tag_raise("camhelp")
         self.canvas.tag_raise("toast")
 
     def toast(self, message, color=COL["text"], seconds=4.0):
         """Short notification at the top of the window."""
-        y = 100 + 30 * len(self._toasts)
+        y = 22 + 30 * len(self._toasts)
         bg = self.canvas.create_rectangle(0, 0, 0, 0, fill="#160f38", outline=color, tags=("toast",))
         item = self.canvas.create_text(W / 2, y, text=message, fill=color, width=W - 200,
                                        font=self.fonts.get(12, "bold"), tags=("toast",))
@@ -844,6 +893,11 @@ class App:
             message = f"Hand tracked  -  {self.pointer.gesture.value.replace('_', ' ')}"
         c.config(self.status_dot, fill=colors.get(code, COL["dim"]))
         c.config(self.status_text, text=message[:52])
+        show_help = self.hand_mode and code == TrackerStatus.ERROR and not self.tracker.running
+        self._set_camera_help(show_help)
+        if show_help:
+            for b in self.camhelp_buttons:
+                b.update(dt, self.pointer)
 
         preview = self.tracker.get_preview() if self.tracker.preview_enabled and self.hand_mode else None
         if preview is not None:
@@ -883,6 +937,11 @@ class App:
         self._last_mouse_move = time.perf_counter()
 
     def _on_click(self, event):
+        if self._camhelp_visible:
+            for b in self.camhelp_buttons:
+                if b.contains(event.x, event.y):
+                    b.click()
+                    return
         if self._transition is None and self.screen is not None:
             self.screen.on_click(event.x, event.y)
 

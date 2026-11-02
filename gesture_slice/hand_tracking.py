@@ -106,8 +106,7 @@ class HandTracker:
         if self._cap is None:
             self._set_status(
                 TrackerStatus.ERROR,
-                f"Camera {self.camera_index} unavailable - check it is connected and "
-                "that camera permission is granted")
+                f"Camera {self.camera_index} blocked or unavailable - allow camera access")
             return False
 
         self._thread = threading.Thread(target=self._run, name="HandTracker", daemon=True)

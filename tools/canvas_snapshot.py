@@ -88,6 +88,20 @@ def snapshot(canvas, path):
             elif kind == "text" and opt("text"):
                 font = _font(canvas, opt("font"))
                 text = opt("text")
+                wrap = float(opt("width") or 0)
+                if wrap:                         # word-wrap like Tk's text width option
+                    lines = []
+                    for para in text.split("\n"):
+                        line = ""
+                        for word in para.split(" "):
+                            trial = (line + " " + word).strip()
+                            if line and font.getlength(trial) > wrap:
+                                lines.append(line)
+                                line = word
+                            else:
+                                line = trial
+                        lines.append(line)
+                    text = "\n".join(lines)
                 l, t, r, b = draw.multiline_textbbox((0, 0), text, font=font)
                 dx, dy = _anchor_offset(opt("anchor"), r - l, b - t)
                 draw.multiline_text((xy[0] + dx - l, xy[1] + dy - t), text, font=font, fill=opt("fill"))
