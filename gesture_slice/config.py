@@ -1,7 +1,7 @@
 """
 config.py - every constant the game uses, in one place.
 
-Changing a number here (window size, gravity, gesture timings, colours ...)
+Changing a number here (window size, gravity, slice speed, colours ...)
 changes the behaviour of the whole application without touching the logic.
 """
 
