@@ -19,8 +19,8 @@ jobs:
         with:
           python-version: ${{ matrix.python }}
 
-      # The unit tests need no camera, no window and no MediaPipe:
-      # game logic, gestures and the database are independent of Tkinter.
+      # The unit tests need no window: game logic, mouse input and the
+      # database are independent of Tkinter.
       - name: Install test dependencies
         run: pip install "numpy>=1.24,<3" "Pillow>=10.0" pyflakes
 

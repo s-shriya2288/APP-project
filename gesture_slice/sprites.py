@@ -16,7 +16,7 @@ import math
 import random
 
 import numpy as np
-from PIL import Image, ImageDraw, ImageFilter
+from PIL import Image, ImageDraw
 
 from . import config
 from .fruit import BOMB_RADIUS, FRUIT_TYPES
@@ -182,32 +182,6 @@ def render_heart(size, color, filled=True):
     return img.resize((size, size), LANCZOS)
 
 
-def render_hand_icon(kind, size=96, color=config.COLORS["accent2"]):
-    """Simple outline icon of a hand pose: 'point', 'palm' or 'fist'."""
-    S = size * SS
-    mask = Image.new("L", (S, S), 0)
-    d = ImageDraw.Draw(mask)
-    u = S / 10
-    d.rounded_rectangle((3 * u, 4.6 * u, 7.2 * u, 8.6 * u), radius=u * 1.1, fill=255)    # palm
-    finger_x = (3.05 * u, 4.1 * u, 5.15 * u, 6.2 * u)
-    tops = {"palm": (1.2, 0.8, 1.0, 1.6), "point": (0.9, 3.9, 4.1, 4.3), "fist": (3.9, 3.8, 3.9, 4.1)}[kind]
-    for x, top in zip(finger_x, tops):
-        d.rounded_rectangle((x, top * u, x + 0.95 * u, 5.4 * u), radius=u * 0.47, fill=255)
-    thumb = Image.new("L", (S, S), 0)
-    td = ImageDraw.Draw(thumb)
-    if kind == "fist":
-        td.rounded_rectangle((3.2 * u, 5.0 * u, 6.0 * u, 5.95 * u), radius=u * 0.47, fill=255)
-    else:
-        td.rounded_rectangle((1.5 * u, 4.4 * u, 2.45 * u, 7.0 * u), radius=u * 0.47, fill=255)
-        thumb = thumb.rotate(32 if kind == "palm" else 20, center=(2.4 * u, 7.2 * u), resample=BICUBIC)
-    mask = Image.fromarray(np.maximum(np.array(mask), np.array(thumb)))
-    outline = mask.filter(ImageFilter.MaxFilter(int(u * 0.35) | 1))
-    img = Image.new("RGBA", (S, S), (0, 0, 0, 0))
-    img.paste(Image.new("RGBA", (S, S), _rgba(color)), (0, 0), outline)
-    img.paste(Image.new("RGBA", (S, S), _rgba(config.COLORS["panel"])), (0, 0), mask)
-    return img.resize((size, size), LANCZOS)
-
-
 def render_glow(radius, color):
     """Soft round spot drawn under the cursor."""
     S = radius * 2
@@ -255,7 +229,6 @@ class SpriteBank:
         self.heart_full = self._tk(render_heart(30, config.COLORS["danger"]))
         self.heart_empty = self._tk(render_heart(30, "#000000", filled=False))
         self.cursor_glow = self._tk(render_glow(18, config.COLORS["accent2"]))
-        self.icons = {k: self._tk(render_hand_icon(k)) for k in ("point", "palm", "fist")}
         self.fruit_icon = {k.name: self._tk(render_fruit(k).resize((64, 64), LANCZOS)) for k in FRUIT_TYPES}
         self.bomb_icon = self._tk(render_bomb().resize((70, 70), LANCZOS))
 

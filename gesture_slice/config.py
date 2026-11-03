@@ -13,7 +13,7 @@ from pathlib import Path
 # --------------------------------------------------------------------------
 APP_TITLE = "Gesture Slice  |  Gaming Arcade"
 GAME_TITLE = "GESTURE SLICE"
-GAME_SUBTITLE = "Gaming Arcade  -  slice fruit with your bare hand"
+GAME_SUBTITLE = "Gaming Arcade  -  slice the fruit with your trackpad or mouse"
 
 WIDTH = 1100
 HEIGHT = 700
@@ -92,39 +92,6 @@ TRAIL_MAX_POINTS = 18
 MAX_SEGMENT_GAP = 0.25                 # samples further apart than this never form a cut
 
 # --------------------------------------------------------------------------
-# Camera / MediaPipe
-# --------------------------------------------------------------------------
-CAMERA_INDEX_OPTIONS = (0, 1, 2)
-DEFAULT_CAMERA_INDEX = 0
-CAMERA_WIDTH = 640
-CAMERA_HEIGHT = 480
-# Part of the (mirrored) camera image that is stretched onto the whole game
-# canvas.  Your hand rarely reaches the very edge of the frame, so mapping an
-# inner box makes it easy to reach every corner of the screen.
-CAMERA_ACTIVE_REGION = (0.12, 0.10, 0.88, 0.82)   # x0, y0, x1, y1 (normalised)
-MP_MAX_HANDS = 1
-MP_MODEL_COMPLEXITY = 0                # 0 = fastest model, ideal for games
-MP_DETECTION_CONFIDENCE = 0.6
-MP_TRACKING_CONFIDENCE = 0.5
-PREVIEW_SIZE = (192, 144)
-CAMERA_FAIL_LIMIT = 30                 # consecutive failed reads = disconnected
-CAMERA_RECONNECT_SECONDS = 1.5
-CAMERA_START_RETRIES = 10             # retries (3 s apart) while waiting for permission
-SAMPLE_QUEUE_SIZE = 32
-
-# --------------------------------------------------------------------------
-# Gesture detection
-# --------------------------------------------------------------------------
-ONE_EURO_MIN_CUTOFF = 1.4              # lower = smoother when still, more lag
-ONE_EURO_BETA = 0.02                   # higher = less lag when moving fast
-ONE_EURO_D_CUTOFF = 1.0
-GESTURE_HOLD_SECONDS = 0.7             # palm / fist must be held this long
-GESTURE_MAX_HOLD_SPEED = 380.0         # hand must be roughly still (px/s)
-GESTURE_GLITCH_TOLERANCE = 0.15        # ignore pose flickers shorter than this
-GESTURE_COOLDOWN = 1.0                 # seconds between two gesture commands
-DWELL_SECONDS = 1.1                    # hover a button this long to press it by hand
-
-# --------------------------------------------------------------------------
 # Visual effects
 # --------------------------------------------------------------------------
 MAX_PARTICLES = 120
@@ -137,9 +104,6 @@ SPRITE_ROTATION_FRAMES = 36            # 10 degree steps for spinning sprites
 # --------------------------------------------------------------------------
 DEFAULT_SETTINGS = {
     "player_name": "Player 1",
-    "control_mode": "Gesture",         # "Gesture" (webcam) or "Mouse"
-    "camera_index": str(DEFAULT_CAMERA_INDEX),
-    "show_preview": "On",
     "sound": "On",
     "round_seconds": str(DEFAULT_ROUND_SECONDS),
     "sensitivity": DEFAULT_SENSITIVITY,

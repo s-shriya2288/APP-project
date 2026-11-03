@@ -6,29 +6,22 @@ Everything is drawn on ONE Tkinter Canvas.  Each screen draws its own items
 
 Main loop (App._tick, scheduled with root.after every ~16 ms):
 
-    1. read all new HandSamples from the tracker queue -> GestureDetector
-    2. read mouse movement                              -> MouseDetector
-    3. combine them into one PointerState (position, cut segments, events)
-    4. current_screen.update(dt, pointer)
-    5. update the overlay (tracking status, camera preview, cursor, FPS)
+    1. read the mouse / trackpad movements -> MouseDetector
+    2. turn them into one PointerState (position, cut segments, trail points)
+    3. current_screen.update(dt, pointer)
+    4. update the overlay (FPS counter, messages)
 """
 
-import os
-import subprocess
-import sys
 import time
 import tkinter as tk
 import tkinter.font as tkfont
 import traceback
 from dataclasses import dataclass, field
 
-from PIL import Image, ImageTk
-
 from . import config
 from .database import DatabaseManager
 from .game_engine import Game, GameRenderer
-from .gesture_detection import Gesture, GestureDetector, MouseDetector
-from .hand_tracking import HandTracker, TrackerStatus
+from .mouse_input import MouseDetector
 from .particle_effects import CanvasState
 from .sound import SoundManager
 from .sprites import SpriteBank, draw_background, draw_panel
@@ -66,29 +59,17 @@ class PointerState:
     present: bool = False
     x: float = 0.0
     y: float = 0.0
-    source: str = "none"                 # "hand" or "mouse"
-    segments: list = field(default_factory=list)
-    points: list = field(default_factory=list)   # (x, y, t, speed) for the trail
-    gesture: Gesture = Gesture.NONE
-    hold_progress: float = 0.0
-    events: list = field(default_factory=list)   # "pause" / "resume"
-    hand_lost: bool = False
+    segments: list = field(default_factory=list)  # (ax, ay, bx, by, speed) since last frame
+    points: list = field(default_factory=list)    # (x, y, t, speed) for the trail
 
 
 class CanvasButton:
-    """Simple button drawn on the canvas.
+    """Simple button drawn on the canvas (lights up on hover, runs command on click)."""
 
-    Works with the mouse (hover + click) and with the hand: hovering the
-    fingertip over it fills a progress bar and 'presses' it after
-    DWELL_SECONDS.
-    """
-
-    def __init__(self, app, tag, x, y, w, h, text, command, style="primary",
-                 font_size=17, dwell=True, sound=True):
+    def __init__(self, app, tag, x, y, w, h, text, command, style="primary", font_size=17, sound=True):
         self.app, self.c = app, app.canvas
         self.x, self.y, self.w, self.h = x, y, w, h
         self.command = command
-        self.dwell_enabled = dwell
         self.play_sound = sound
         color = BUTTON_STYLES[style]
         self.img_normal = app.sprites.button(w, h, color, hover=False)
@@ -96,10 +77,7 @@ class CanvasButton:
         self.item = self.c.create_image(x, y, image=self.img_normal, tags=(tag,))
         self.label = self.c.create_text(x, y, text=text, fill="#ffffff",
                                         font=app.fonts.get(font_size, "bold"), tags=(tag,))
-        self.bar = self.c.create_line(0, 0, 0, 0, fill=COL["gold"], width=4, capstyle="round",
-                                      state="hidden", tags=(tag,))
         self.hover = False
-        self.dwell = 0.0
         self.enabled = True
 
     def contains(self, px, py):
@@ -109,27 +87,11 @@ class CanvasButton:
         self.c.itemconfigure(self.label, text=text)
 
     def update(self, dt, pointer):
-        """Returns True if the button fired (so the caller can stop iterating)."""
+        """Show the hover image while the pointer is over the button."""
         inside = self.enabled and pointer.present and self.contains(pointer.x, pointer.y)
         if inside != self.hover:
             self.hover = inside
             self.c.itemconfigure(self.item, image=self.img_hover if inside else self.img_normal)
-        if inside and pointer.source == "hand" and self.dwell_enabled:
-            self.dwell += dt
-            p = clamp(self.dwell / config.DWELL_SECONDS, 0, 1)
-            left = self.x - self.w / 2 + 18
-            self.c.coords(self.bar, left, self.y + self.h / 2 - 7,
-                          left + (self.w - 36) * p, self.y + self.h / 2 - 7)
-            self.c.itemconfigure(self.bar, state="normal")
-            if p >= 1:
-                self.dwell = 0.0
-                self.c.itemconfigure(self.bar, state="hidden")
-                self.click()
-                return True
-        elif self.dwell:
-            self.dwell = 0.0
-            self.c.itemconfigure(self.bar, state="hidden")
-        return False
 
     def click(self):
         if not self.enabled:
@@ -178,9 +140,8 @@ class Screen:
 
     def update(self, dt, pointer):
         self.time += dt
-        for b in list(self.buttons):
-            if b.update(dt, pointer):
-                break
+        for b in self.buttons:
+            b.update(dt, pointer)
 
     def on_click(self, x, y):
         for b in list(self.buttons):
@@ -218,10 +179,7 @@ class MainMenuScreen(Screen):
         self.text(W / 2 - 150, cy, "PLAYER", 10, COL["muted"], "bold", anchor="w")
         self.text(W / 2 - 92, cy, a.settings["player_name"], 14, COL["text"], "bold", anchor="w")
         self.text(W / 2 + 150, cy, f"BEST {best:,}", 13, COL["gold"], "bold", anchor="e")
-        mode = a.settings["control_mode"]
-        hint = ("Hover your fingertip over a button to press it  |  Enter = Play"
-                if mode == "Gesture" else "Mouse mode  |  Enter = Play  |  switch to Gesture in Settings")
-        self.text(W / 2, H - 22, hint, 11, COL["muted"])
+        self.text(W / 2, H - 22, "Use the trackpad or mouse  |  Enter = Play  |  Esc = Exit", 11, COL["muted"])
 
     def on_key(self, key):
         if key in ("Return", "space"):
@@ -232,12 +190,12 @@ class MainMenuScreen(Screen):
 
 class HowToPlayScreen(Screen):
     CARDS = (
-        ("point", "AIM", "Point your index finger at the\ncamera - your fingertip is the blade."),
+        ("fruit:lime", "AIM", "Move your finger on the trackpad\n(or the mouse). The pointer is the knife."),
         ("fruit:apple", "SLICE", "Swipe FAST through the fruit.\nSlow movements only aim."),
         ("bomb", "AVOID BOMBS", "Cutting a bomb costs a life.\nYou have 3 lives per round."),
         ("fruit:golden star", "COMBOS & SPECIALS", "Cut 2+ fruits in one swipe for a\nbonus. Golden stars = 20 points."),
-        ("palm", "PAUSE", "Hold an open palm still for a\nmoment to pause the game."),
-        ("fist", "RESUME", "Make a fist and hold it\nto resume playing."),
+        ("fruit:watermelon", "LEVELS", "Score more to reach the next level.\nFruit fly faster every level."),
+        ("fruit:plum", "PAUSE", "Press Space or P, or click the\nII button at the top right."),
     )
 
     def build(self):
@@ -250,16 +208,11 @@ class HowToPlayScreen(Screen):
             x = W / 2 + (col - 1) * (cw + 24)
             y = 215 + row * (ch + 22)
             draw_panel(self.c, (self.tag,), x, y, cw, ch, radius=20)
-            if icon.startswith("fruit:"):
-                img = sp.fruit_icon[icon.split(":")[1]]
-            elif icon == "bomb":
-                img = sp.bomb_icon
-            else:
-                img = sp.icons[icon]
+            img = sp.bomb_icon if icon == "bomb" else sp.fruit_icon[icon.split(":")[1]]
             self.c.create_image(x - cw / 2 + 62, y, image=img, tags=(self.tag,))
             self.text(x - cw / 2 + 118, y - 38, title, 15, COL["gold"], "bold", anchor="w")
             self.text(x - cw / 2 + 118, y + 12, body, 11, COL["text"], anchor="w", width=190)
-        self.text(W / 2, 560, "No webcam?  Move the mouse quickly to slice.   Space / P = pause   Esc = menu",
+        self.text(W / 2, 560, "Tip: quick, straight swipes work best.   Space / P = pause   Esc = menu",
                   12, COL["muted"])
         self.button(W / 2 - 130, 625, 220, 52, "BACK", a.show_menu, "neutral")
         self.button(W / 2 + 130, 625, 220, 52, "PLAY", a.start_game, "primary")
@@ -288,7 +241,7 @@ class LeaderboardScreen(Screen):
         for i, r in enumerate(rows):
             y = top + 48 + i * 34
             if r["name"].lower() == me:
-                self.c.create_rectangle(left - 16, y - 15, left + pw - 64, y + 15, fill="#2c2266",
+                self.c.create_rectangle(left - 16, y - 15, left + pw - 64, y + 15, fill="#34495e",
                                         outline=COL["accent2"], tags=(self.tag,))
             color = medal.get(r["rank"], COL["text"])
             if r["rank"] in medal:
@@ -315,9 +268,6 @@ class LeaderboardScreen(Screen):
 
 class SettingsScreen(Screen):
     OPTIONS = (
-        ("control_mode", "Control mode", ("Gesture", "Mouse")),
-        ("camera_index", "Camera", tuple(str(i) for i in config.CAMERA_INDEX_OPTIONS)),
-        ("show_preview", "Camera preview", ("On", "Off")),
         ("sound", "Sound effects", ("On", "Off")),
         ("round_seconds", "Round length (s)", tuple(str(s) for s in config.ROUND_SECONDS_OPTIONS)),
         ("sensitivity", "Slice sensitivity", tuple(config.SLICE_SENSITIVITY)),
@@ -327,14 +277,14 @@ class SettingsScreen(Screen):
         a = self.app
         self.background()
         self.heading(W / 2, 60, "SETTINGS", 34)
-        pw, ph = 640, 500
-        draw_panel(self.c, (self.tag,), W / 2, 360, pw, ph, radius=24)
+        pw, ph = 640, 270
+        draw_panel(self.c, (self.tag,), W / 2, 275, pw, ph)
         left, right = W / 2 - pw / 2 + 50, W / 2 + pw / 2 - 50
-        y = 150
+        y = 180
         self.text(left, y, "Player name", 15, COL["text"], "bold", anchor="w")
         self.name_var = tk.StringVar(value=a.settings["player_name"])
         self.entry = tk.Entry(a.root, textvariable=self.name_var, width=16, font=a.fonts.get(15, "bold"),
-                              bg="#2a2160", fg=COL["text"], insertbackground=COL["accent2"], relief="flat",
+                              bg="#34495e", fg=COL["text"], insertbackground=COL["accent2"], relief="flat",
                               highlightthickness=2, highlightbackground=COL["panel_edge"],
                               highlightcolor=COL["accent2"], justify="center")
         self.entry.bind("<Return>", lambda e: (self._save_name(), a.root.focus_set()))
@@ -343,13 +293,12 @@ class SettingsScreen(Screen):
 
         self.value_items = {}
         for i, (key, label, values) in enumerate(self.OPTIONS):
-            y = 210 + i * 56
+            y = 250 + i * 60
             self.text(left, y, label, 15, COL["text"], "bold", anchor="w")
             self.button(right - 200, y, 44, 40, "<", lambda k=key: self._cycle(k, -1), "neutral", font_size=16)
             self.button(right - 20, y, 44, 40, ">", lambda k=key: self._cycle(k, +1), "neutral", font_size=16)
             self.value_items[key] = self.text(right - 110, y, a.settings[key], 15, COL["accent2"], "bold")
-        self.status_text = self.text(W / 2, 560, "", 11, COL["muted"], width=560, justify="center")
-        self.button(W / 2, 640, 240, 52, "SAVE & BACK", self._back, "primary")
+        self.button(W / 2, 470, 240, 52, "SAVE & BACK", self._back, "primary")
 
     def _cycle(self, key, step):
         values = dict((k, v) for k, _, v in self.OPTIONS)[key]
@@ -367,13 +316,6 @@ class SettingsScreen(Screen):
     def _back(self):
         self._save_name()
         self.app.show_menu()
-
-    def update(self, dt, pointer):
-        super().update(dt, pointer)
-        code, message = self.app.tracker.status
-        fps = self.app.tracker.fps
-        extra = f"  ({fps:.0f} camera FPS)" if code in (TrackerStatus.SEARCHING, TrackerStatus.TRACKING) else ""
-        self.app.state.config(self.status_text, text=f"Hand tracking: {message}{extra}")
 
     def on_key(self, key):
         if key == "Escape":
@@ -394,13 +336,11 @@ class GameScreen(Screen):
         self.slice_speed = config.SLICE_SENSITIVITY.get(s["sensitivity"], 650.0)
         self.game = Game(W, H, int(s["round_seconds"]), self.slice_speed)
         self.renderer = GameRenderer(self.c, a.sprites, a.fonts, a.sound)
-        self.pause_button = self.button(W - 72, 44, 44, 40, "II", self.toggle_pause, "neutral",
-                                        font_size=14, dwell=False)
+        self.pause_button = self.button(W - 72, 44, 44, 40, "II", self.toggle_pause, "neutral", font_size=14)
         self.overlay_tag = self.tag + "_pause"
         self.overlay_buttons = []
         self.finished = False
         self.last_swoosh = 0.0
-        self.hand_hint = self.text(W / 2, H - 28, "", 13, COL["warning"], "bold")
 
     # pause handling ----------------------------------------------------------
     def toggle_pause(self):
@@ -419,21 +359,18 @@ class GameScreen(Screen):
             self._hide_pause_overlay()
 
     def _show_pause_overlay(self):
-        sp, T = self.app.sprites, (self.tag, self.overlay_tag)
-        draw_panel(self.c, T, W / 2, H / 2, 460, 380, radius=28)
+        T = (self.tag, self.overlay_tag)
+        draw_panel(self.c, T, W / 2, H / 2, 460, 380)
         font = self.app.fonts.get(44, "bold")
         self.c.create_text(W / 2, H / 2 - 130, text="PAUSED", fill=COL["text"], font=font, tags=T)
-        self.c.create_image(W / 2 - 150, H / 2 - 50, image=sp.icons["fist"], tags=T)
-        self.c.create_text(W / 2 - 90, H / 2 - 50, anchor="w", width=290, tags=T,
-                           text="Make a fist and hold it to resume\n(or press Space)",
-                           fill=COL["muted"], font=self.app.fonts.get(13))
+        self.c.create_text(W / 2, H / 2 - 60, text="Press Space or click RESUME", tags=T,
+                           fill=COL["muted"], font=self.app.fonts.get(14))
         for i, (label, cmd, style) in enumerate((("RESUME", self.resume, "success"),
                                                  ("RESTART", self.app.start_game, "primary"),
                                                  ("MAIN MENU", self.app.show_menu, "neutral"))):
             b = CanvasButton(self.app, self.overlay_tag, W / 2, H / 2 + 30 + i * 58, 260, 48, label, cmd, style)
             self.c.addtag_withtag(self.tag, b.item)
-            for item in (b.label, b.bar):
-                self.c.addtag_withtag(self.tag, item)
+            self.c.addtag_withtag(self.tag, b.label)
             self.overlay_buttons.append(b)
         self.renderer.raise_cursor()
         self.app.raise_overlay()
@@ -446,12 +383,6 @@ class GameScreen(Screen):
     def update(self, dt, pointer):
         self.time += dt
         now = time.perf_counter()
-        for event in pointer.events:
-            if event == "pause":
-                self.pause()
-            elif event == "resume":
-                self.resume()
-
         playing = self.game.state == Game.PLAYING
         events = self.game.update(dt, pointer.segments if playing else ())
         if self.game.state != Game.PAUSED:
@@ -461,20 +392,12 @@ class GameScreen(Screen):
                     and now - self.last_swoosh > 0.28:
                 self.last_swoosh = now
                 self.app.sound.play("swoosh")
-        if pointer.hand_lost:
-            self.renderer.reset_trail()
         self.renderer.handle_events(events, self.game)
         self.renderer.render(self.game, dt, pointer, now)
 
-        hint = ""
-        if self.app.hand_mode and not pointer.present and self.game.state != Game.OVER:
-            hint = "Hand not visible - raise your hand in front of the camera"
-        self.app.state.config(self.hand_hint, text=hint)
-
         buttons = self.overlay_buttons if self.game.state == Game.PAUSED else [self.pause_button]
-        for b in list(buttons):
-            if b.update(dt, pointer):
-                break
+        for b in buttons:
+            b.update(dt, pointer)
 
         if self.game.state == Game.OVER and self.game.over_time >= config.GAME_OVER_DELAY and not self.finished:
             self.finished = True
@@ -576,8 +499,6 @@ class App:
         self.settings = self.db.load_settings()
         self.sprites = SpriteBank(W, H)
         self.sound = SoundManager(enabled=self.settings["sound"] == "On")
-        self.tracker = HandTracker(int(self.settings["camera_index"]), self.settings["show_preview"] == "On")
-        self.detector = GestureDetector(W, H)
         self.mouse = MouseDetector()
         self.canvas.delete(loading)
 
@@ -586,8 +507,6 @@ class App:
         self._mouse_events = []
         self._mouse_pos = None
         self._last_mouse_move = -10.0
-        self._last_hand_time = -10.0
-        self._hand_was_present = False
         self._next_screen = None
         self._after_id = None
         self._running = True
@@ -607,49 +526,12 @@ class App:
         for message in [self.db.error, self.sound.error, *self.sprites.warnings]:
             if message:
                 self.toast(message, COL["warning"])
-        if self.settings["control_mode"] == "Gesture":
-            self.root.after(250, self.start_tracker)
-
-    # ------------------------------------------------------------- properties
-    @property
-    def hand_mode(self):
-        return self.settings["control_mode"] == "Gesture"
-
-    # --------------------------------------------------------------- tracker
-    def start_tracker(self, attempt=0):
-        """Start the webcam.  On failure keep retrying for a while: on macOS the
-        very first attempt fails while the camera-permission dialog is open."""
-        if not self._running or not self.hand_mode:
-            return
-        self.tracker.camera_index = int(self.settings["camera_index"])
-        self.tracker.preview_enabled = self.settings["show_preview"] == "On"
-        self.detector.reset()
-        if self.tracker.start():
-            return
-        if attempt == 0:
-            self.toast(self.tracker.status[1] + "  -  mouse fallback active", COL["warning"], 6)
-        if attempt < config.CAMERA_START_RETRIES and "OpenCV missing" not in self.tracker.status[1]:
-            self.root.after(3000, lambda: self.start_tracker(attempt + 1))
-
-    def stop_tracker(self):
-        self.tracker.stop()
-        self.detector.reset()
 
     def change_setting(self, key, value):
         self.settings[key] = value
         self.db.save_setting(key, value)
         if key == "sound":
             self.sound.enabled = value == "On"
-        elif key == "show_preview":
-            self.tracker.preview_enabled = value == "On"
-        elif key == "control_mode":
-            if value == "Gesture":
-                self.start_tracker()
-            else:
-                self.stop_tracker()
-        elif key == "camera_index" and self.hand_mode:
-            self.stop_tracker()
-            self.start_tracker()
 
     # ------------------------------------------------------------ navigation
     def show_menu(self):
@@ -668,7 +550,7 @@ class App:
         self.switch_to(lambda: GameScreen(self))
 
     def finish_game(self, game):
-        result = self.db.record_session(self.settings["player_name"], game.stats, self.settings["control_mode"])
+        result = self.db.record_session(self.settings["player_name"], game.stats, "Mouse")
         if self.db.error and not result.get("saved"):
             self.toast(self.db.error, COL["danger"])
         self.switch_to(lambda: GameOverScreen(self, game, result))
@@ -691,77 +573,18 @@ class App:
 
     # --------------------------------------------------------------- overlay
     def _build_overlay(self):
-        c, T = self.canvas, "overlay"
-        self.preview_photo = ImageTk.PhotoImage("RGB", config.PREVIEW_SIZE)
-        pw, ph = config.PREVIEW_SIZE
-        self.preview_frame = c.create_rectangle(16, H - 58 - ph, 20 + pw, H - 54, outline=COL["accent2"],
-                                                width=2, state="hidden", tags=(T,))
-        self.preview_item = c.create_image(18, H - 56 - ph, image=self.preview_photo, anchor="nw",
-                                           state="hidden", tags=(T,))
-        self._preview_id = -1
-        draw_panel(c, (T,), 16 + 165, H - 29, 330, 30, radius=15, )
-        self.status_dot = c.create_oval(30, H - 34, 40, H - 24, fill=COL["dim"], outline="", tags=(T,))
-        self.status_text = c.create_text(48, H - 29, anchor="w", text="", fill=COL["muted"],
-                                         font=self.fonts.get(10, "bold"), tags=(T,))
-        self.fps_text = c.create_text(W - 14, H - 14, anchor="se", text="", fill=COL["dim"],
-                                      font=self.fonts.get(10, "bold"), tags=(T,))
-        self.cursor_glow = c.create_image(-100, -100, image=self.sprites.cursor_glow, tags=(T,))
-        self.cursor_dot = c.create_oval(0, 0, 0, 0, fill="#ffffff", outline=COL["accent2"], width=2, tags=(T,))
-        self._build_camera_help()
-
-    def _build_camera_help(self):
-        """Panel shown when the webcam can't be opened (e.g. macOS blocked it)."""
-        c, T = self.canvas, "camhelp"
-        cx, cy = 16 + 180, H - 122
-        draw_panel(c, (T,), cx, cy, 360, 118, radius=18, outline=COL["danger"])
-        if sys.platform == "darwin":
-            text = ("Camera is blocked, so hand control is off. Open Camera Settings, switch ON "
-                    "'Gesture Slice' (or your Terminal), then press Retry or reopen the app.")
-        else:
-            text = ("Camera can't be opened, so hand control is off. Close other apps using the "
-                    "camera, check camera privacy settings, then press Retry.")
-        c.create_text(cx - 164, cy - 50, anchor="nw", width=328, text=text, fill=COL["text"],
-                      font=self.fonts.get(10, "bold"), tags=(T,))
-        self.camhelp_buttons = [
-            CanvasButton(self, T, cx - 78, cy + 34, 172, 34, "CAMERA SETTINGS", self.open_camera_settings,
-                         "danger", font_size=12),
-            CanvasButton(self, T, cx + 100, cy + 34, 136, 34, "RETRY CAMERA", lambda: self.start_tracker(),
-                         "secondary", font_size=12),
-        ]
-        self._camhelp_visible = True
-        self._set_camera_help(False)
-
-    def _set_camera_help(self, visible):
-        if visible == self._camhelp_visible:
-            return
-        self._camhelp_visible = visible
-        self.canvas.itemconfigure("camhelp", state="normal" if visible else "hidden")
-        for b in self.camhelp_buttons:
-            self.canvas.itemconfigure(b.bar, state="hidden")
-        if visible:
-            self.canvas.tag_raise("camhelp")
-
-    def open_camera_settings(self):
-        """Open the operating system's camera privacy page (the user changes it there)."""
-        try:
-            if sys.platform == "darwin":
-                subprocess.Popen(["open", "x-apple.systempreferences:com.apple.preference.security?Privacy_Camera"])
-            elif sys.platform.startswith("win"):
-                os.startfile("ms-settings:privacy-webcam")
-            else:
-                self.toast("Check that no other program is using the camera, then press Retry.", COL["warning"])
-        except Exception as exc:
-            self.toast(f"Could not open camera settings: {exc}", COL["danger"])
+        """FPS counter (press F) drawn above every screen."""
+        self.fps_text = self.canvas.create_text(W - 14, H - 14, anchor="se", text="", fill=COL["dim"],
+                                                font=self.fonts.get(10, "bold"), tags=("overlay",))
 
     def raise_overlay(self):
         self.canvas.tag_raise("overlay")
-        self.canvas.tag_raise("camhelp")
         self.canvas.tag_raise("toast")
 
     def toast(self, message, color=COL["text"], seconds=4.0):
         """Short notification at the top of the window."""
         y = 22 + 30 * len(self._toasts)
-        bg = self.canvas.create_rectangle(0, 0, 0, 0, fill="#160f38", outline=color, tags=("toast",))
+        bg = self.canvas.create_rectangle(0, 0, 0, 0, fill=COL["panel"], outline=color, tags=("toast",))
         item = self.canvas.create_text(W / 2, y, text=message, fill=color, width=W - 200,
                                        font=self.fonts.get(12, "bold"), tags=("toast",))
         x0, y0, x1, y1 = self.canvas.bbox(item)
@@ -769,47 +592,7 @@ class App:
         self._toasts.append([item, bg, seconds])
 
     def _update_overlay(self, dt):
-        c = self.state
-        code, message = self.tracker.status
-        colors = {TrackerStatus.TRACKING: COL["success"], TrackerStatus.SEARCHING: COL["warning"],
-                  TrackerStatus.STARTING: COL["accent2"], TrackerStatus.ERROR: COL["danger"],
-                  TrackerStatus.OFF: COL["dim"]}
-        if not self.hand_mode:
-            code, message = TrackerStatus.OFF, "Mouse mode - enable Gesture in Settings"
-        elif code == TrackerStatus.TRACKING:
-            message = f"Hand tracked  -  {self.pointer.gesture.value.replace('_', ' ')}"
-        c.config(self.status_dot, fill=colors.get(code, COL["dim"]))
-        c.config(self.status_text, text=message[:52])
-        show_help = self.hand_mode and code == TrackerStatus.ERROR and not self.tracker.running
-        self._set_camera_help(show_help)
-        if show_help:
-            for b in self.camhelp_buttons:
-                b.update(dt, self.pointer)
-
-        preview = self.tracker.get_preview() if self.tracker.preview_enabled and self.hand_mode else None
-        if preview is not None:
-            frame_id, array = preview
-            if frame_id != self._preview_id:
-                self._preview_id = frame_id
-                self.preview_photo.paste(Image.fromarray(array))
-            c.config(self.preview_item, state="normal")
-            c.config(self.preview_frame, state="normal")
-        else:
-            c.config(self.preview_item, state="hidden")
-            c.config(self.preview_frame, state="hidden")
-
-        p = self.pointer
-        if p.present and p.source == "hand" and not self.screen.own_cursor:
-            c.coords(self.cursor_glow, p.x, p.y)
-            c.coords(self.cursor_dot, p.x - 7, p.y - 7, p.x + 7, p.y + 7)
-        else:
-            c.coords(self.cursor_glow, -200, -200)
-            c.coords(self.cursor_dot, -30, -30, -20, -20)
-
-        if self.show_fps:
-            c.config(self.fps_text, text=f"{self._fps:.0f} FPS  |  camera {self.tracker.fps:.0f} FPS")
-        else:
-            c.config(self.fps_text, text="")
+        self.state.config(self.fps_text, text=f"{self._fps:.0f} FPS" if self.show_fps else "")
 
         for toast in list(self._toasts):
             toast[2] -= dt
@@ -824,11 +607,6 @@ class App:
         self._last_mouse_move = time.perf_counter()
 
     def _on_click(self, event):
-        if self._camhelp_visible:
-            for b in self.camhelp_buttons:
-                if b.contains(event.x, event.y):
-                    b.click()
-                    return
         if self._next_screen is None and self.screen is not None:
             self.screen.on_click(event.x, event.y)
 
@@ -842,38 +620,16 @@ class App:
             self.screen.on_key(event.keysym)
 
     def _collect_pointer(self, now):
-        """Merge hand and mouse input into one PointerState."""
+        """Turn the mouse / trackpad movements since the last frame into a PointerState."""
         p = PointerState()
-        hand = None
-        if self.tracker.running:
-            for sample in self.tracker.drain():
-                frame = self.detector.update(sample)
-                if frame.present:
-                    hand = frame
-                    self._last_hand_time = now
-                    p.points.append((frame.x, frame.y, frame.timestamp, frame.speed))
-                    if frame.segment:
-                        p.segments.append(frame.segment)
-                    if frame.event:
-                        p.events.append(frame.event)
-            hand = hand or (self.detector.last if self.detector.last.present else None)
-        hand_present = hand is not None and now - self._last_hand_time < 0.5
-        p.hand_lost = self._hand_was_present and not hand_present
-        self._hand_was_present = hand_present
-
         for x, y, t in self._mouse_events:
             frame = self.mouse.update(x, y, t)
-            if not hand_present:
-                p.points.append((x, y, t, frame.speed))
+            p.points.append((x, y, t, frame.speed))
             if frame.segment:
                 p.segments.append(frame.segment)
         self._mouse_events.clear()
-
-        if hand_present:
-            p.present, p.x, p.y, p.source = True, hand.x, hand.y, "hand"
-            p.gesture, p.hold_progress = hand.gesture, hand.hold_progress
-        elif self.mouse.last.present and now - self._last_mouse_move < 3.0:
-            p.present, p.x, p.y, p.source = True, self.mouse.last.x, self.mouse.last.y, "mouse"
+        if self.mouse.last.present and now - self._last_mouse_move < 3.0:
+            p.present, p.x, p.y = True, self.mouse.last.x, self.mouse.last.y
         return p
 
     # ------------------------------------------------------------- main loop
@@ -889,7 +645,6 @@ class App:
                 factory, self._next_screen = self._next_screen, None
                 self._set_screen(factory())
                 self.pointer.segments.clear()
-                self.pointer.events.clear()
             if self.screen is not None:
                 self.screen.update(dt, self.pointer)
             self._update_overlay(dt)
@@ -909,7 +664,7 @@ class App:
         self.root.mainloop()
 
     def quit(self):
-        """Stop the loop and release camera, database and audio safely."""
+        """Stop the loop and close the database and audio safely."""
         if not self._running:
             return
         self._running = False
@@ -918,7 +673,6 @@ class App:
                 self.root.after_cancel(self._after_id)
             except tk.TclError:
                 pass
-        self.tracker.stop()
         self.db.close()
         self.sound.shutdown()
         self.root.destroy()

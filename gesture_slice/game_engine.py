@@ -398,8 +398,6 @@ class GameRenderer:
         self.cursor_glow = c.create_image(-100, -100, image=sprites.cursor_glow, tags=(T,))
         self.cursor_dot = c.create_oval(0, 0, 0, 0, fill="#ffffff", outline=config.COLORS["accent2"],
                                         width=2, tags=(T,))
-        self.hold_arc = c.create_arc(0, 0, 0, 0, start=90, extent=0, style="arc", width=5,
-                                     outline=config.COLORS["warning"], state="hidden", tags=(T,))
         self.m_text = c.create_line(0, 0, 0, 0, state="hidden", tags=(T,))
         # Red warning frame after a bomb: nested outlines fading inwards.
         self.warning = [c.create_rectangle(i * 7, i * 7, width - i * 7, height - i * 7, width=8,
@@ -513,17 +511,10 @@ class GameRenderer:
         if pointer is None or not pointer.present:
             st.coords(self.cursor_glow, -200, -200)
             st.coords(self.cursor_dot, -20, -20, -10, -10)
-            st.config(self.hold_arc, state="hidden")
             return
         x, y = pointer.x, pointer.y
         st.coords(self.cursor_glow, x, y)
         st.coords(self.cursor_dot, x - 6, y - 6, x + 6, y + 6)
-        if pointer.hold_progress > 0:
-            color = config.COLORS["warning"] if pointer.gesture.value == "open_palm" else config.COLORS["success"]
-            st.coords(self.hold_arc, x - 26, y - 26, x + 26, y + 26)
-            st.config(self.hold_arc, state="normal", extent=-359.9 * pointer.hold_progress, outline=color)
-        else:
-            st.config(self.hold_arc, state="hidden")
 
     def _update_warning(self, dt):
         if self.warning_time <= 0:
@@ -627,7 +618,7 @@ class GameRenderer:
 
     def raise_cursor(self):
         """Keep the blade cursor visible above overlays such as the pause panel."""
-        for item in (self.cursor_glow, self.cursor_dot, self.hold_arc):
+        for item in (self.cursor_glow, self.cursor_dot):
             self.canvas.tag_raise(item)
 
     def add_trail_point(self, x, y, t, active):

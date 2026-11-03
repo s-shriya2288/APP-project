@@ -1,43 +1,36 @@
 # Workflow
 
-This document covers three workflows: how the project was **built** (stages),
-how the program **runs** (runtime workflow), and how the code is **managed**
-(Git + continuous integration).
+This file explains how we **built** the project (stages), how the program
+**runs**, and how the code is **managed** with Git and GitHub Actions.
 
 ---
 
-## 1. Development workflow: 9 stages
+## 1. How we built it (stages)
 
-Each stage was finished and tested before the next one started.
+We finished and tested each stage before starting the next one.
 
-| Stage | Goal | What was built | How it was tested |
+| Stage | Goal | What we built | How we tested it |
 |---|---|---|---|
-| 0. Environment | Find a working Python + MediaPipe combination | Python 3.11 virtual env; `mediapipe==0.10.14` (still ships `mp.solutions.hands`); `opencv-contrib-python==4.10.0.84` (newer 5.x bundles SDL2, which clashes with pygame on macOS) | `python -c "import cv2, mediapipe"`, model loads |
-| 1. Window + menu | Tkinter app skeleton | `App`, `Screen`, `MainMenuScreen`, `CanvasButton`, `config.py` | Window opens, buttons react to mouse |
-| 2. Webcam | Camera without freezing the UI | `HandTracker` thread, `queue.Queue`, preview image, status messages, permission/disconnect handling | Fake camera test: frames flow, disconnect → auto-reconnect, `stop()` releases the camera |
-| 3. Hand tracking | 21 landmarks | MediaPipe Hands on the worker thread, mirrored frames, skeleton overlay in the preview | Model loads and processes frames at camera rate |
-| 4. Blade + trail | Fingertip becomes a blade | `GestureDetector` (mapping, One Euro filter, speed, segments), `BladeTrail`, hand cursor, dwell-click | Unit tests: mapping clamps, jitter reduced, swipe speed, hand-lost reset |
-| 5. Fruit + physics + collisions | The core game | `Fruit`, `FruitHalf`, launch maths, segment–circle collision, slicing into halves | Unit tests: collision edge cases, every throw peaks on screen and falls back down |
-| 6. Bombs, scoring, lives, levels | Full rules | `Bomb`, `Game` state machine, combos, timer, `level_for_score`, `settings_for_level` | Unit tests: points, specials, combos, 3 bombs end the game, timer, pause freezes the game, 2-minute random fuzz game |
-| 7. Animations + sound | Polish | Procedural sprites (Pillow/NumPy), particles, splats, floating text, shake, warning flash, synthesized sounds | Visual check through screenshots |
-| 8. SQLite | Persistence | `DatabaseManager`, five tables, UPSERT transaction, leaderboard, settings | Unit tests on a temporary database, including the fallback when the file can't be written |
-| 9. Testing + fixing + docs | Ship it | End-to-end UI test, performance work (30 → 60 FPS), docs, CI, website | `tests/manual_ui_smoke.py`: all screens, scripted play, palm→pause, fist→resume, 0 errors, ~60 FPS |
+| 1. Window + menu | Tkinter app skeleton | `App`, `Screen`, `MainMenuScreen`, `CanvasButton`, `config.py` | Window opens, buttons react to the mouse |
+| 2. Blade + trail | Pointer becomes a knife | `MouseDetector` / `MotionTracker` (segments + speed), `BladeTrail` | Unit tests: segment speed, long pause breaks the line |
+| 3. Fruit + physics + collisions | The main game | `Fruit`, `FruitHalf`, throwing maths, segment–circle collision, cutting into halves | Unit tests: collision edge cases, every throw goes up and comes back down |
+| 4. Bombs, score, lives, levels | Full rules | `Bomb`, `Game` state machine, combos, timer, `level_for_score`, `settings_for_level` | Unit tests: points, combos, 3 bombs end the game, timer, pause |
+| 5. Effects + sound | Make it fun | Fruit images drawn with Pillow, juice particles, splats, floating text, sounds | Checked with screenshots |
+| 6. SQLite | Save scores | `DatabaseManager`, tables, leaderboard, settings | Unit tests on a temporary database |
+| 7. Testing + docs | Finish | End-to-end UI test, speed fixes (30 → 60 FPS), docs, CI, website | `tests/manual_ui_smoke.py`: every screen, scripted play, pause/resume, 0 errors |
 
-### Bugs found and fixed in stage 9
+### Bugs we found and fixed
 
-| Symptom | Cause | Fix |
+| Problem | Cause | Fix |
 |---|---|---|
-| Gameplay only ~30 FPS, menu ~20 FPS | Tk repaints the bounding box of all changes, and a full-window photo background takes ~30 ms to repaint on macOS | Background and panels drawn with vector shapes; title image cropped; decorative menu fruit kept away from big images |
-| Idle frames still slow | Unchanged values re-sent to Tk every frame (each call repaints) | `CanvasState` only sends values that changed |
-| Warning "Class SDL… implemented in both" | OpenCV 5 and pygame each ship SDL2 | Pinned `opencv-contrib-python==4.10.0.84` |
-| First launch on macOS: camera fails | Permission dialog is still open on the first attempt | App retries every 3 s (up to 10×) while in gesture mode |
-| Fingertip "teleport" sliced everything | Hand left and came back elsewhere → huge segment | Motion state reset when the hand is lost; samples > 0.25 s apart never form a cut |
-| Pause triggered while slicing with an open hand | Pose alone was enough | Pose must be held 0.7 s **and** the hand must be nearly still |
-| Hand cursor hidden under the pause panel | Drawing order | Cursor raised above overlays |
+| Game ran at only ~30 FPS | Tk repaints the whole changed area, and a full-window background image is slow to repaint | Background and panels drawn with plain shapes |
+| Still slow when nothing changed | The same values were sent to Tk every frame | `CanvasState` only sends values that changed |
+| A quick jump of the pointer cut everything in between | Two points far apart in time made one huge segment | Points more than 0.25 s apart never make a cut |
+| Pointer hidden under the pause panel | Drawing order | Cursor raised above overlays |
 
 ---
 
-## 2. Runtime workflow: what happens when you play
+## 2. What happens when you play
 
 ```mermaid
 flowchart TD
@@ -45,52 +38,46 @@ flowchart TD
     B -- no --> B1[Print install command and exit]
     B -- yes --> C[Create window, load fonts]
     C --> D[Open SQLite DB<br/>load settings]
-    D --> E[Pre-render all sprites<br/>and sounds]
+    D --> E[Draw all fruit images<br/>and make sounds]
     E --> F[Main menu]
-    F --> G{Control mode<br/>= Gesture?}
-    G -- yes --> H[Open webcam on main thread<br/>start HandTracker thread]
-    H -- fails --> H1[Notice + mouse fallback<br/>retry every 3 s]
-    G -- no --> I[Mouse mode]
-    H --> J
-    H1 --> J
-    I --> J[Player presses PLAY<br/>by hand-dwell, click or Enter]
+    F --> J[Click PLAY or press Enter]
     J --> K[Countdown 3-2-1-SLICE!]
-    K --> L[Game loop: 60 FPS]
-    L --> M{Palm held?}
-    M -- yes --> N[Paused<br/>fist to resume]
+    K --> L[Game loop: 60 FPS<br/>swipe with trackpad / mouse]
+    L --> M{Space / P pressed?}
+    M -- yes --> N[Paused]
     N --> L
     L --> O{Time up or<br/>0 lives?}
     O -- no --> L
     O -- yes --> P[Game over banner]
-    P --> Q[Save session in one<br/>SQLite transaction]
-    Q --> R[Results screen<br/>score, best, accuracy, combo]
+    P --> Q[Save the game in one<br/>SQLite transaction]
+    Q --> R[Results screen]
     R --> J
     R --> F
 ```
 
 ---
 
-## 3. Code management workflow (Git + CI)
+## 3. Git + GitHub Actions
 
 ```
 main  ←  feature branches  ←  commits
           │
           └─ every push / pull request → GitHub Actions (ci.yml)
-                 1. set up Python 3.11 on Ubuntu
+                 1. set up Python 3.10 / 3.11 / 3.12 on Ubuntu
                  2. pip install numpy Pillow pyflakes
-                 3. pyflakes gesture_slice main.py tests tools   (lint)
-                 4. python -m unittest discover -s tests          (36 tests)
+                 3. pyflakes main.py gesture_slice tests tools   (lint)
+                 4. python -m unittest discover -s tests          (unit tests)
 ```
 
-- The unit tests never need a camera or a window, because logic is
-  separated from Tkinter. That's why they can run in CI.
-- The end-to-end test (`tests/manual_ui_smoke.py`) needs a display, so it
-  runs locally before a release and also regenerates `docs/screenshots/`.
+- The unit tests don't need a window because the game logic is separate
+  from Tkinter, so they can run on GitHub's servers.
+- The end-to-end test (`tests/manual_ui_smoke.py`) opens the real window, so
+  we run it on our laptop. It also makes the screenshots in `docs/screenshots/`.
 
-### Suggested team workflow
+### Team workflow
 
 1. `git checkout -b feature/<name>`
 2. Make the change and run `python -m unittest discover -s tests`
 3. Commit with a clear message, then push
-4. Open a pull request, wait for the green CI check, merge into `main`
-5. Vercel redeploys the project website automatically on every push to `main`
+4. Open a pull request, wait for the green check, merge into `main`
+5. Vercel updates the project website on every push to `main`

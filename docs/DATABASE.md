@@ -29,7 +29,7 @@ erDiagram
         REAL accuracy "percent"
         INTEGER level_reached
         REAL duration_s
-        TEXT control_mode "Gesture / Mouse"
+        TEXT control_mode "Mouse"
         TEXT played_at
     }
     high_scores {
@@ -63,7 +63,7 @@ erDiagram
 | `game_sessions` | finished game | every game over |
 | `high_scores` | player | a game beats the player's best |
 | `game_statistics` | player | every game over (totals accumulate) |
-| `settings` | setting (`player_name`, `control_mode`, `camera_index`, `show_preview`, `sound`, `round_seconds`, `sensitivity`) | a value changes on the Settings screen |
+| `settings` | setting (`player_name`, `sound`, `round_seconds`, `sensitivity`) | a value changes on the Settings screen |
 
 Foreign keys are enforced (`PRAGMA foreign_keys = ON`), and indices exist on
 `game_sessions(player_id)` and `high_scores(best_score DESC)`.

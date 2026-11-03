@@ -1,107 +1,28 @@
 # How it works
 
-## 1. From webcam to fingertip
+## 1. Trackpad / mouse input and blade speed
 
-1. `HandTracker` reads a 640×480 frame with OpenCV.
-2. The frame is **mirrored** (`cv2.flip(frame, 1)`), so moving your hand to
-   the right moves the blade to the right, like a mirror.
-3. MediaPipe Hands (`model_complexity=0`, the fastest model, one hand)
-   returns **21 landmarks**, each an `(x, y)` pair from 0 to 1:
-
-```
-        8   12  16  20        tips
-        7   11  15  19
-        6   10  14  18        PIP (middle) joints
-    4   5    9  13  17        MCP (knuckles)
-     3
-      2
-       1
-          0                   wrist
-```
-
-4. Landmark **8 = index fingertip** is the blade.
-
-### Mapping camera → canvas
-
-Your hand rarely reaches the very edge of the camera image, so only an inner
-box (`CAMERA_ACTIVE_REGION = (0.12, 0.10, 0.88, 0.82)`) is stretched over the
-whole 1100×700 game window:
-
-```
-u = clamp((x − 0.12) / (0.88 − 0.12), 0, 1)      canvas_x = u × 1100
-v = clamp((y − 0.10) / (0.82 − 0.10), 0, 1)      canvas_y = v × 700
-```
-
-(`GestureDetector.map_to_canvas`)
-
-## 2. Smoothing: the One Euro filter
-
-Raw landmarks jitter by a few pixels from frame to frame. A plain moving
-average removes jitter but makes the blade *lag* behind fast swipes, which is
-fatal in a slicing game. The **One Euro filter** (Casiez et al., 2012) adapts:
-
-```
-speed      = smoothed derivative of the position
-cutoff     = min_cutoff + beta × |speed|
-alpha      = 1 / (1 + tau/dt),   tau = 1 / (2π × cutoff)
-filtered   = alpha × raw + (1 − alpha) × previous
-```
-
-- finger nearly still → low cutoff → strong smoothing (no jitter)
-- finger moving fast → high cutoff → almost no smoothing (no lag)
-
-`OneEuroFilter` in `gesture_detection.py`. Tuning lives in `config.py`
-(`ONE_EURO_MIN_CUTOFF`, `ONE_EURO_BETA`).
-
-## 3. Movement, velocity and the slicing trail
-
-`MotionTracker` remembers the previous smoothed point `(x, y, t)`. For every
-new sample it produces a **cut segment** `(ax, ay, bx, by, speed)` where
+Tkinter sends a `<Motion>` event every time the pointer moves. `App._on_motion`
+saves `(x, y, time)`, and once per frame `MouseDetector` (`mouse_input.py`)
+turns them into **cut segments**. `MotionTracker` remembers the previous point
+and for every new one produces `(ax, ay, bx, by, speed)` where
 
 ```
 speed = distance(previous, current) / (t_current − t_previous)     [px / s]
 ```
 
-- If the two samples are more than 0.25 s apart (dropped frames), no segment
-  is produced. This avoids a "teleport cut" across the screen.
-- When the hand disappears, the filter and the previous point are reset for
-  the same reason.
-- Every sample is also added to the `BladeTrail`, which draws the last 0.2 s
-  of positions as tapered line segments (bright when fast enough to
-  cut, dim blue when only aiming).
+- If two points are more than 0.25 s apart, no segment is made. This avoids a
+  "teleport cut" across the screen after you stop moving.
+- A segment only cuts if its speed is above the **slice sensitivity**
+  (Settings: Low 950, Medium 650, High 420 px/s), so slow moves just aim.
+- Every point is also added to the `BladeTrail`, which draws the last 0.2 s
+  of positions as tapered line segments (bright when fast enough to cut,
+  dim when only aiming).
 
-## 4. Gesture recognition (pause / resume)
-
-`GestureDetector.classify()` decides the pose from the 21 landmarks using
-**distance ratios**, which don't depend on hand size, distance to the
-camera or rotation:
-
-```
-finger extended  ⇔  |wrist → tip| > 1.12 × |wrist → PIP joint|
-finger curled    ⇔  |wrist → tip| < 1.02 × |wrist → PIP joint|
-thumb out        ⇔  |thumb tip → index knuckle| > 0.55 × palm size
-```
-
-| Pose | Rule | Command |
-|---|---|---|
-| OPEN_PALM | all 4 fingers extended + thumb out | **pause** |
-| FIST | all 4 fingers curled | **resume** |
-| POINT | index extended, ≥ 2 others curled | (normal play) |
-
-**Confirmation delay.** A pose only triggers its command after being held
-for **0.7 s** (`GESTURE_HOLD_SECONDS`) while the hand is nearly still
-(< 380 px/s). That way an open hand during a fast swipe never pauses the
-game by accident. Pose flickers shorter than 0.15 s are ignored, a 1 s
-cooldown separates two commands, and each hold fires only once. A ring
-around the cursor fills up while you hold, so the player sees it coming.
-
-**Dwell click.** In menus, keeping the fingertip over a button for 1.1 s
-presses it (a gold progress bar fills inside the button).
-
-## 5. Collision detection
+## 2. Collision detection
 
 Each fruit and bomb is a circle (centre `C`, radius `r`). The blade movement
-in one camera frame is the segment `A → B`. They touch when the closest
+in one frame is the segment `A → B`. They touch when the closest
 point of the segment to `C` is within `r`:
 
 ```
@@ -116,7 +37,7 @@ through the fruit even when the actual swipe stopped short of it
 (`fruit.segment_intersects_circle`, tested in `tests/test_collision.py`).
 
 Testing the whole segment, not just the fingertip point, means fast swipes
-can't "tunnel" through a fruit between two camera frames.
+can't "tunnel" through a fruit between two frames.
 
 The slice threshold comes from *Settings → Slice sensitivity*:
 Low 950 px/s, Medium 650 px/s, High 420 px/s.
@@ -126,7 +47,7 @@ objects. The blade angle is `atan2(dy, dx)` of the segment. The halves are
 rotated to that angle, so the cut edge lines up with your swipe, and they're
 pushed apart along the normal of the cut line.
 
-## 6. Physics, spawning and difficulty
+## 3. Physics, spawning and difficulty
 
 Objects use semi-implicit Euler integration every frame:
 
@@ -156,19 +77,18 @@ Fruit that fall off the screen count as *missed* for the accuracy figure
 **Lives:** 3. A bomb hit costs one, followed by 0.6 s of invulnerability so
 one swipe can't cost two lives. The round ends when lives or time run out.
 
-## 7. Performance: how it stays at 60 FPS
+## 4. Performance: how it stays at 60 FPS
 
 Tkinter isn't a game engine, so the code avoids everything that makes it
 slow. These numbers were measured on an Apple-silicon Mac:
 
 | Technique | Why |
 |---|---|
-| Camera + MediaPipe on a **background thread**, results via a queue | `hands.process()` takes 10–30 ms. On the main thread it would halve the frame rate. |
 | **`root.after(16 ms − work)`** game loop | Steady frame pacing without blocking the event loop. |
 | **All images pre-rendered** at start-up (36 rotation frames per fruit) | Rotating or converting images while playing is far too slow. Spinning is just switching between ready-made frames. |
-| **Object pools** for particles (260) and trail segments | Creating/deleting thousands of canvas items per second is slow. Pooled items are re-used and hidden when idle. |
+| **Object pools** for particles (120) and trail segments | Creating/deleting thousands of canvas items per second is slow. Pooled items are re-used and hidden when idle. |
 | **`CanvasState`**: only call `itemconfigure`/`coords` when a value changes | Every Tk call repaints its area, even with an identical value. Skipping redundant calls took idle gameplay from 30 to 60 FPS. |
 | **Plain shapes for the background and panels** instead of full-window images | Tk repaints the bounding box of all changes. Once fruit are everywhere that's the whole window, and repainting a 1100×700 photo costs ~30 ms. Solid shapes cost ~1 ms. Gameplay while slicing went from 30 to 60 FPS. |
 | Caps on everything | ≤ 14 flying objects, ≤ 10 splats, ≤ 12 floating texts, lifetimes on every effect. |
 
-Press **F** in the game to show the live FPS and camera FPS.
+Press **F** in the game to show the live FPS.

@@ -4,8 +4,7 @@ main.py - entry point of Gesture Slice.
     python main.py
 
 Checks that the required packages are installed, then opens the Tkinter
-window.  OpenCV / MediaPipe are optional at this point: without them the game
-starts in mouse mode and tells you how to enable hand tracking.
+window.  The game is played with the trackpad or mouse.
 """
 
 import importlib.util

@@ -3,9 +3,9 @@ Automated end-to-end run of the real Tkinter window (needs a display).
 
     python tests/manual_ui_smoke.py [screenshot_dir]
 
-It opens every screen, plays a game with scripted swipes, feeds fake hand
-landmarks through the real GestureDetector (open palm -> pause, fist ->
-resume) and checks that nothing raises.  Uses a temporary database.
+It opens every screen, plays two games with scripted mouse swipes, pauses
+and resumes with the keyboard, and checks that nothing raises.  Uses a
+temporary database.
 """
 
 import os
@@ -20,7 +20,6 @@ from gesture_slice import config  # noqa: E402
 
 TMP = tempfile.mkdtemp()
 config.DB_PATH = os.path.join(TMP, "smoke.db")
-config.DEFAULT_SETTINGS["control_mode"] = "Mouse"
 config.DEFAULT_SETTINGS["round_seconds"] = "60"
 
 from tools.canvas_snapshot import install_image_registry, snapshot  # noqa: E402
@@ -29,39 +28,9 @@ install_image_registry()
 
 from gesture_slice import ui  # noqa: E402
 from gesture_slice.game_engine import Game  # noqa: E402
-from gesture_slice.hand_tracking import HandSample, TrackerStatus  # noqa: E402
-from tests.test_gesture_detection import hand  # noqa: E402
 
 SHOTS = sys.argv[1] if len(sys.argv) > 1 else None
 errors = []
-
-
-class FakeTracker:
-    """Stands in for HandTracker: replays scripted landmark samples."""
-
-    def __init__(self):
-        self.script = []
-        self.preview_enabled = False
-        self.camera_index = 0
-        self.fps = 30.0
-
-    running = True
-    status = (TrackerStatus.TRACKING, "Hand tracked")
-
-    def start(self):
-        return True
-
-    def stop(self):
-        pass
-
-    def get_preview(self):
-        return None
-
-    def drain(self):
-        now = time.perf_counter()
-        out = [HandSample(now, lm) for lm in self.script[:1]]
-        self.script = self.script[1:]
-        return out
 
 
 def main():
@@ -125,25 +94,11 @@ def main():
     at(17.3, app.show_leaderboard)
     at(18.2, shot("08_leaderboard"))
 
-    # --- gesture pipeline with the fake tracker --------------------------
-    def gesture_mode():
-        app.tracker = FakeTracker()
-        app.settings["control_mode"] = "Gesture"
-        app.start_game()
-    at(18.5, gesture_mode)
-
-    def script_hand():
-        point = hand((True, False, False, False))
-        swipes = []
-        for rep in range(25):
-            for i in range(8):
-                x = 0.15 + i * 0.09 if rep % 2 == 0 else 0.78 - i * 0.09
-                swipes.append(hand((True, False, False, False), offset=(x, 0.35 + (rep % 4) * 0.08)))
-        fist = hand((False,) * 4, thumb_out=False)
-        app.tracker.script = [point] * 10 + swipes + [hand()] * 70 + [None] * 5 + [point] * 30 + \
-            [fist] * 90 + [point] * 300
-    at(23.0, script_hand)
-    at(25.0, shot("09_gesture_play"))
+    # --- second game: keyboard pause / resume while swiping --------------
+    at(18.5, app.start_game)
+    at(19.0, lambda: keep_swiping(time.perf_counter() + 14)())
+    at(24.0, lambda: app.screen.on_key("space"))
+    at(26.0, lambda: app.screen.on_key("space"))
 
     results = {"states": []}
 
@@ -152,13 +107,10 @@ def main():
             state = app.screen.game.state
             if not results["states"] or results["states"][-1] != state:
                 results["states"].append(state)
-            if state == Game.PAUSED and "paused_shot" not in results:
-                results["paused_shot"] = True
-                shot("10_gesture_paused")()
             results["score"] = app.screen.game.stats.score
         if app._running:
             app.root.after(16, watch)
-    at(23.0, watch)
+    at(19.0, watch)
     at(34.9, lambda: results.__setitem__("final_screen", type(app.screen).__name__))
     at(35.0, app.quit)
 
@@ -182,7 +134,7 @@ def main():
     states = results["states"]
     ok = not errors and Game.PAUSED in states and states.index(Game.PAUSED) < len(states) - 1 \
         and results.get("score", 0) > 0
-    print("gesture pause/resume:", "OK" if ok else "FAILED")
+    print("pause/resume:", "OK" if ok else "FAILED")
     sys.exit(0 if ok else 1)
 
 
