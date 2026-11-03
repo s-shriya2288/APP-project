@@ -111,7 +111,6 @@ APP-project/
 │   └── utils.py             small helper functions
 ├── tests/                   unit tests
 ├── docs/                    extra documentation and screenshots
-├── website/                 project web page (Vercel)
 └── scripts/                 build the desktop app
 ```
 

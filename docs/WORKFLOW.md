@@ -17,7 +17,7 @@ We finished and tested each stage before starting the next one.
 | 4. Bombs, score, lives, levels | Full rules | `Bomb`, `Game` state machine, combos, timer, `level_for_score`, `settings_for_level` | Unit tests: points, combos, 3 bombs end the game, timer, pause |
 | 5. Effects + sound | Make it fun | Fruit images drawn with Pillow, juice particles, splats, floating text, sounds | Checked with screenshots |
 | 6. SQLite | Save scores | `DatabaseManager`, tables, leaderboard, settings | Unit tests on a temporary database |
-| 7. Testing + docs | Finish | End-to-end UI test, speed fixes (30 → 60 FPS), docs, CI, website | `tests/manual_ui_smoke.py`: every screen, scripted play, pause/resume, 0 errors |
+| 7. Testing + docs | Finish | End-to-end UI test, speed fixes (30 → 60 FPS), docs, CI | `tests/manual_ui_smoke.py`: every screen, scripted play, pause/resume, 0 errors |
 
 ### Bugs we found and fixed
 
@@ -80,4 +80,3 @@ main  ←  feature branches  ←  commits
 2. Make the change and run `python -m unittest discover -s tests`
 3. Commit with a clear message, then push
 4. Open a pull request, wait for the green check, merge into `main`
-5. Vercel updates the project website on every push to `main`
