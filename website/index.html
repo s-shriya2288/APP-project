@@ -28,7 +28,7 @@
       <p class="eyebrow">APP project · Python desktop game</p>
       <h1>GESTURE <span>SLICE</span></h1>
       <p class="lead">Slice fruit with your bare hand. Your webcam tracks your index fingertip in real time
-        and turns it into a glowing blade. No mouse, no keyboard, no controller.</p>
+        and turns it into a knife. No mouse, no keyboard, no controller.</p>
       <div class="cta">
         <a class="btn primary" href="#run">Download &amp; run</a>
         <a class="btn ghost" href="https://github.com/s-shriya2288/APP-project">View source</a>
@@ -42,11 +42,11 @@
       <h2>What's inside</h2>
       <div class="grid">
         <article class="card"><h3>Real hand tracking</h3><p>OpenCV webcam capture + MediaPipe Hands (21 landmarks) on a background thread, so the game never stutters.</p></article>
-        <article class="card"><h3>Smooth blade</h3><p>One Euro filter smoothing, velocity-based slicing and a tapered glowing trail that follows your fingertip.</p></article>
+        <article class="card"><h3>Smooth blade</h3><p>One Euro filter smoothing, velocity-based slicing and a trail that follows your fingertip.</p></article>
         <article class="card"><h3>Gesture commands</h3><p>Open palm pauses, a fist resumes, and hovering a fingertip presses menu buttons. Fully hands-free.</p></article>
         <article class="card"><h3>Arcade game feel</h3><p>Physics with gravity and spin, fruit split along your swipe, juice particles, combos, bombs, levels.</p></article>
         <article class="card"><h3>SQLite leaderboard</h3><p>Players, sessions, high scores and statistics stored with transactions and UPSERTs.</p></article>
-        <article class="card"><h3>60 FPS in Tkinter</h3><p>Pre-rendered sprites, pooled canvas items, change-only updates and a vector backdrop.</p></article>
+        <article class="card"><h3>60 FPS in Tkinter</h3><p>Pre-drawn images, reused canvas items and only updating what changed.</p></article>
       </div>
     </section>
 
@@ -59,7 +59,7 @@
         <div class="gesture"><img class="g-icon" src="icons/fist.png" alt="" width="64" height="64"><h3>Fist</h3><p>Hold it for 0.7 s to resume playing.</p></div>
       </div>
       <div class="pair">
-        <figure class="shot"><img src="screenshots/01_menu.png" alt="Main menu with neon title and floating fruit" width="1100" height="700" loading="lazy"><figcaption>Main menu: press buttons by hovering your fingertip</figcaption></figure>
+        <figure class="shot"><img src="screenshots/01_menu.png" alt="Main menu" width="1100" height="700" loading="lazy"><figcaption>Main menu: press buttons by hovering your fingertip</figcaption></figure>
         <figure class="shot"><img src="screenshots/10_gesture_paused.png" alt="Pause screen triggered by an open palm" width="1100" height="700" loading="lazy"><figcaption>Paused with an open palm, resume with a fist</figcaption></figure>
       </div>
     </section>
@@ -102,7 +102,7 @@ cut ⇔ |C − P| ≤ r  and  speed ≥ threshold</pre>
         so it runs on your computer, not in the browser. You need Python 3.9–3.12 (3.11 recommended).</p>
       <div class="steps">
         <div class="step"><span>1</span><pre>git clone https://github.com/s-shriya2288/APP-project.git
-cd Gaming-Arcade</pre></div>
+cd APP-project</pre></div>
         <div class="step"><span>2</span><pre>python3.11 -m venv .venv
 source .venv/bin/activate     # Windows: .venv\Scripts\Activate.ps1</pre></div>
         <div class="step"><span>3</span><pre>pip install -r requirements.txt</pre></div>

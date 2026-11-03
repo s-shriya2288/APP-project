@@ -13,9 +13,7 @@ Main loop (App._tick, scheduled with root.after every ~16 ms):
     5. update the overlay (tracking status, camera preview, cursor, FPS)
 """
 
-import math
 import os
-import random
 import subprocess
 import sys
 import time
@@ -28,24 +26,23 @@ from PIL import Image, ImageTk
 
 from . import config
 from .database import DatabaseManager
-from .fruit import FRUIT_TYPES
 from .game_engine import Game, GameRenderer
 from .gesture_detection import Gesture, GestureDetector, MouseDetector
 from .hand_tracking import HandTracker, TrackerStatus
-from .particle_effects import CanvasState, ParticleSystem
+from .particle_effects import CanvasState
 from .sound import SoundManager
 from .sprites import SpriteBank, draw_background, draw_panel
-from .utils import clamp, ease_out_back, ease_out_cubic, lerp_color
+from .utils import clamp, ease_out_cubic
 
 COL = config.COLORS
 W, H = config.WIDTH, config.HEIGHT
 
 BUTTON_STYLES = {
-    "primary": ("#ff4fa3", "#8b5cff"),
-    "secondary": ("#36e2ff", "#5b6cff"),
-    "neutral": ("#5d5791", "#2e2a5c"),
-    "danger": ("#ff3b5c", "#a01e5a"),
-    "success": ("#3df5a1", "#13a6a0"),
+    "primary": "#27ae60",
+    "secondary": "#2980b9",
+    "neutral": "#7f8c8d",
+    "danger": "#c0392b",
+    "success": "#16a085",
 }
 
 
@@ -79,7 +76,7 @@ class PointerState:
 
 
 class CanvasButton:
-    """Rounded gradient button drawn on the canvas.
+    """Simple button drawn on the canvas.
 
     Works with the mouse (hover + click) and with the hand: hovering the
     fingertip over it fills a progress bar and 'presses' it after
@@ -93,12 +90,10 @@ class CanvasButton:
         self.command = command
         self.dwell_enabled = dwell
         self.play_sound = sound
-        colors = BUTTON_STYLES[style]
-        self.img_normal = app.sprites.button(w, h, *colors, hover=False)
-        self.img_hover = app.sprites.button(w, h, *colors, hover=True)
+        color = BUTTON_STYLES[style]
+        self.img_normal = app.sprites.button(w, h, color, hover=False)
+        self.img_hover = app.sprites.button(w, h, color, hover=True)
         self.item = self.c.create_image(x, y, image=self.img_normal, tags=(tag,))
-        self.shadow = self.c.create_text(x + 1, y + 2, text=text, fill="#1a0f3d",
-                                         font=app.fonts.get(font_size, "bold"), tags=(tag,))
         self.label = self.c.create_text(x, y, text=text, fill="#ffffff",
                                         font=app.fonts.get(font_size, "bold"), tags=(tag,))
         self.bar = self.c.create_line(0, 0, 0, 0, fill=COL["gold"], width=4, capstyle="round",
@@ -112,7 +107,6 @@ class CanvasButton:
 
     def set_text(self, text):
         self.c.itemconfigure(self.label, text=text)
-        self.c.itemconfigure(self.shadow, text=text)
 
     def update(self, dt, pointer):
         """Returns True if the button fired (so the caller can stop iterating)."""
@@ -171,25 +165,9 @@ class Screen:
         return self.c.create_text(x, y, text=text, fill=color, font=self.app.fonts.get(size, weight),
                                   tags=(self.tag,), **kw)
 
-    def glow_title(self, x, y, text, size, color=COL["text"], glow=COL["accent"]):
-        """Neon title, pre-rendered once by Pillow (one cheap image item).
-
-        Falls back to a halo made of offset Tk text copies when no TrueType
-        font file is available."""
-        image = self.app.sprites.title(text, size, color, lerp_color(color, glow, 0.35), glow)
-        if image is not None:
-            return [self.c.create_image(x, y, image=image, tags=(self.tag,))]
-        ids = []
-        font = self.app.fonts.get(size, "bold")
-        for radius, shade in ((6, 0.75), (3, 0.45)):
-            for k in range(8):
-                a = k * math.pi / 4
-                ids.append(self.c.create_text(x + math.cos(a) * radius, y + math.sin(a) * radius, text=text,
-                                              fill=lerp_color(glow, COL["bg_top"], shade), font=font,
-                                              tags=(self.tag,)))
-        ids.append(self.c.create_text(x + 3, y + 5, text=text, fill="#000000", font=font, tags=(self.tag,)))
-        ids.append(self.c.create_text(x, y, text=text, fill=color, font=font, tags=(self.tag,)))
-        return ids
+    def heading(self, x, y, text, size, color=COL["text"]):
+        """Big bold title text."""
+        return self.text(x, y, text, size, color, "bold")
 
     def background(self):
         draw_background(self.c, self.tag)
@@ -220,35 +198,12 @@ class Screen:
         self.buttons = []
 
 
-class FloatingFruit:
-    def __init__(self, rng, side, initial=True):
-        self.side = side
-        self.reset(rng, initial)
-
-    def reset(self, rng, initial=False):
-        self.kind = rng.choice(FRUIT_TYPES)
-        # Fruit drift only in the side margins: the buttons and title in the
-        # middle then never need repainting, which keeps the menu at 60 FPS.
-        self.x = rng.uniform(60, 125) if self.side == 0 else rng.uniform(W - 125, W - 60)
-        self.y = rng.uniform(80, H) if initial else H + 80
-        self.vy = rng.uniform(-70, -35)
-        self.phase = rng.uniform(0, math.tau)
-        self.sway = rng.uniform(8, 20)
-        self.angle = rng.uniform(0, 360)
-        self.spin = rng.uniform(-50, 50)
-
-
 class MainMenuScreen(Screen):
     def build(self):
         a = self.app
         self.background()
-        self.rng = random.Random()
-        self.floaters = [FloatingFruit(self.rng, i % 2) for i in range(10)]
-        self.floater_items = [self.c.create_image(f.x, f.y, image=a.sprites.fruit[f.kind.name][0], tags=(self.tag,))
-                              for f in self.floaters]
-        self.floater_frames = [0] * len(self.floaters)
-        self.glow_title(W / 2, 120, config.GAME_TITLE, 60, "#ffffff", COL["accent"])
-        self.text(W / 2, 186, config.GAME_SUBTITLE.upper(), 12, COL["accent2"], "bold")
+        self.heading(W / 2, 120, config.GAME_TITLE, 54, COL["accent"])
+        self.text(W / 2, 180, config.GAME_SUBTITLE, 14, COL["muted"])
 
         y0, gap = 262, 66
         self.button(W / 2, y0, 300, 56, "PLAY", a.start_game, "primary", font_size=20)
@@ -267,28 +222,6 @@ class MainMenuScreen(Screen):
         hint = ("Hover your fingertip over a button to press it  |  Enter = Play"
                 if mode == "Gesture" else "Mouse mode  |  Enter = Play  |  switch to Gesture in Settings")
         self.text(W / 2, H - 22, hint, 11, COL["muted"])
-
-    def update(self, dt, pointer):
-        super().update(dt, pointer)
-        sp = self.app.sprites
-        # Move the left column on even frames and the right column on odd
-        # frames (each by 2*dt) so one repaint never spans the whole window.
-        self.frame_no = getattr(self, "frame_no", 0) + 1
-        side = self.frame_no % 2
-        for i, (f, item) in enumerate(zip(self.floaters, self.floater_items)):
-            if f.side != side:
-                continue
-            f.y += f.vy * dt * 2
-            f.angle = (f.angle + f.spin * dt * 2) % 360
-            if f.y < -80:
-                f.reset(self.rng)
-                self.floater_frames[i] = -1
-            x = f.x + math.sin(self.time * 0.8 + f.phase) * f.sway
-            self.c.coords(item, x, f.y)
-            frame = sp.frame_index(f.angle)
-            if frame != self.floater_frames[i]:          # only touch Tk when the image changes
-                self.floater_frames[i] = frame
-                self.c.itemconfigure(item, image=sp.fruit[f.kind.name][frame])
 
     def on_key(self, key):
         if key in ("Return", "space"):
@@ -310,7 +243,7 @@ class HowToPlayScreen(Screen):
     def build(self):
         a, sp = self.app, self.app.sprites
         self.background()
-        self.glow_title(W / 2, 60, "HOW TO PLAY", 38, COL["text"], COL["accent2"])
+        self.heading(W / 2, 60, "HOW TO PLAY", 34)
         cw, ch = 320, 170
         for i, (icon, title, body) in enumerate(self.CARDS):
             col, row = i % 3, i // 3
@@ -336,9 +269,9 @@ class LeaderboardScreen(Screen):
     def build(self):
         a = self.app
         self.background()
-        self.glow_title(W / 2, 60, "LEADERBOARD", 38, COL["text"], COL["gold"])
+        self.heading(W / 2, 60, "LEADERBOARD", 34)
         pw, ph = 860, 440
-        draw_panel(self.c, (self.tag,), W / 2, 335, pw, ph, radius=24, glow=COL["accent"])
+        draw_panel(self.c, (self.tag,), W / 2, 335, pw, ph, radius=24)
         left = W / 2 - pw / 2 + 40
         cols = (("RANK", 0, "w"), ("PLAYER", 90, "w"), ("BEST SCORE", 400, "e"), ("GAMES", 510, "e"),
                 ("FRUITS", 620, "e"), ("BEST COMBO", 760, "e"))
@@ -393,7 +326,7 @@ class SettingsScreen(Screen):
     def build(self):
         a = self.app
         self.background()
-        self.glow_title(W / 2, 60, "SETTINGS", 38, COL["text"], COL["accent2"])
+        self.heading(W / 2, 60, "SETTINGS", 34)
         pw, ph = 640, 500
         draw_panel(self.c, (self.tag,), W / 2, 360, pw, ph, radius=24)
         left, right = W / 2 - pw / 2 + 50, W / 2 + pw / 2 - 50
@@ -487,7 +420,7 @@ class GameScreen(Screen):
 
     def _show_pause_overlay(self):
         sp, T = self.app.sprites, (self.tag, self.overlay_tag)
-        draw_panel(self.c, T, W / 2, H / 2, 460, 380, radius=28, fill="#120e30", glow=COL["accent2"])
+        draw_panel(self.c, T, W / 2, H / 2, 460, 380, radius=28)
         font = self.app.fonts.get(44, "bold")
         self.c.create_text(W / 2, H / 2 - 130, text="PAUSED", fill=COL["text"], font=font, tags=T)
         self.c.create_image(W / 2 - 150, H / 2 - 50, image=sp.icons["fist"], tags=T)
@@ -499,7 +432,7 @@ class GameScreen(Screen):
                                                  ("MAIN MENU", self.app.show_menu, "neutral"))):
             b = CanvasButton(self.app, self.overlay_tag, W / 2, H / 2 + 30 + i * 58, 260, 48, label, cmd, style)
             self.c.addtag_withtag(self.tag, b.item)
-            for item in (b.label, b.shadow, b.bar):
+            for item in (b.label, b.bar):
                 self.c.addtag_withtag(self.tag, item)
             self.overlay_buttons.append(b)
         self.renderer.raise_cursor()
@@ -575,12 +508,10 @@ class GameOverScreen(Screen):
     def build(self):
         a, st = self.app, self.stats
         self.background()
-        self.particles = ParticleSystem(self.c, capacity=160)
         new_record = self.result.get("new_record")
         title = "TIME UP!" if self.reason == "time" else "GAME OVER"
-        draw_panel(self.c, (self.tag,), W / 2, 360, 600, 520, radius=30,
-                   glow=COL["gold"] if new_record else COL["accent"])
-        self.glow_title(W / 2, 145, title, 46, COL["text"], COL["danger"] if self.reason == "bombs" else COL["gold"])
+        draw_panel(self.c, (self.tag,), W / 2, 360, 600, 520)
+        self.heading(W / 2, 145, title, 42, COL["danger"] if self.reason == "bombs" else COL["gold"])
         self.score_item = self.text(W / 2, 228, "0", 60, COL["gold"], "bold")
         self.text(W / 2, 278, "FINAL SCORE", 11, COL["muted"], "bold")
         self.badge = None
@@ -606,24 +537,11 @@ class GameOverScreen(Screen):
         self.text(W / 2, 530, note, 11, COL["muted"])
         self.button(W / 2 - 140, 585, 240, 54, "PLAY AGAIN", a.start_game, "primary", font_size=18)
         self.button(W / 2 + 140, 585, 240, 54, "MAIN MENU", a.show_menu, "neutral", font_size=18)
-        self.confetti_timer = 0.0
 
     def update(self, dt, pointer):
         super().update(dt, pointer)
         t = ease_out_cubic(self.time / 1.2)
         self.app.state.config(self.score_item, text=f"{int(self.stats.score * t):,}")
-        if self.badge is not None:
-            pulse = ease_out_back(min(self.time / 0.5, 1.0)) * (1 + 0.06 * math.sin(self.time * 6))
-            self.c.itemconfigure(self.badge, font=self.app.fonts.get(int(16 * pulse) or 1, "bold"))
-            self.confetti_timer -= dt
-            if self.confetti_timer <= 0 and self.time < 4:
-                self.confetti_timer = 0.35
-                for _ in range(2):
-                    x = random.uniform(W / 2 - 280, W / 2 + 280)
-                    color = random.choice((COL["gold"], COL["accent"], COL["accent2"], COL["success"]))
-                    self.particles.emit(x, 110, color, 14, speed=(80, 320), size=(2, 5), gravity=380,
-                                        life=(0.6, 1.2), spread=(200, 340))
-        self.particles.update(dt)
 
     def on_key(self, key):
         if key in ("Return", "space"):
@@ -631,9 +549,6 @@ class GameOverScreen(Screen):
         elif key == "Escape":
             self.app.show_menu()
 
-    def destroy(self):
-        self.c.delete("particle")
-        super().destroy()
 
 
 # --------------------------------------------------------------------------
@@ -673,7 +588,7 @@ class App:
         self._last_mouse_move = -10.0
         self._last_hand_time = -10.0
         self._hand_was_present = False
-        self._transition = None
+        self._next_screen = None
         self._after_id = None
         self._running = True
         self._last_tick = time.perf_counter()
@@ -687,12 +602,6 @@ class App:
         self.canvas.bind("<Button-1>", self._on_click)
         self.root.bind("<Key>", self._on_key)
         self.root.protocol("WM_DELETE_WINDOW", self.quit)
-
-        try:
-            self.root.attributes("-alpha", 1.0)
-            self._can_fade = True
-        except tk.TclError:
-            self._can_fade = False
 
         self._set_screen(MainMenuScreen(self))
         for message in [self.db.error, self.sound.error, *self.sprites.warnings]:
@@ -765,10 +674,8 @@ class App:
         self.switch_to(lambda: GameOverScreen(self, game, result))
 
     def switch_to(self, factory):
-        """Fade the window out, swap the screen, fade back in."""
-        if self._transition is not None:
-            return
-        self._transition = {"factory": factory, "step": 0, "swapped": False}
+        """Change screen at the start of the next frame (not in the middle of one)."""
+        self._next_screen = factory
 
     def _set_screen(self, screen):
         if self.screen is not None:
@@ -782,26 +689,6 @@ class App:
         except tk.TclError:
             pass
 
-    def _run_transition(self):
-        tr = self._transition
-        n = config.FADE_STEPS
-        tr["step"] += 1
-        step = tr["step"]
-        if not self._can_fade:
-            self._set_screen(tr["factory"]())
-            self._transition = None
-            return
-        if step <= n:
-            self.root.attributes("-alpha", 1 - 0.75 * step / n)
-        elif not tr["swapped"]:
-            tr["swapped"] = True
-            self._set_screen(tr["factory"]())
-        elif step <= 2 * n + 1:
-            self.root.attributes("-alpha", 0.25 + 0.75 * (step - n - 1) / n)
-        else:
-            self.root.attributes("-alpha", 1.0)
-            self._transition = None
-
     # --------------------------------------------------------------- overlay
     def _build_overlay(self):
         c, T = self.canvas, "overlay"
@@ -812,7 +699,7 @@ class App:
         self.preview_item = c.create_image(18, H - 56 - ph, image=self.preview_photo, anchor="nw",
                                            state="hidden", tags=(T,))
         self._preview_id = -1
-        draw_panel(c, (T,), 16 + 165, H - 29, 330, 30, radius=15, fill="#120e30")
+        draw_panel(c, (T,), 16 + 165, H - 29, 330, 30, radius=15, )
         self.status_dot = c.create_oval(30, H - 34, 40, H - 24, fill=COL["dim"], outline="", tags=(T,))
         self.status_text = c.create_text(48, H - 29, anchor="w", text="", fill=COL["muted"],
                                          font=self.fonts.get(10, "bold"), tags=(T,))
@@ -826,7 +713,7 @@ class App:
         """Panel shown when the webcam can't be opened (e.g. macOS blocked it)."""
         c, T = self.canvas, "camhelp"
         cx, cy = 16 + 180, H - 122
-        draw_panel(c, (T,), cx, cy, 360, 118, radius=18, fill="#2a0f2e", outline=COL["danger"])
+        draw_panel(c, (T,), cx, cy, 360, 118, radius=18, outline=COL["danger"])
         if sys.platform == "darwin":
             text = ("Camera is blocked, so hand control is off. Open Camera Settings, switch ON "
                     "'Gesture Slice' (or your Terminal), then press Retry or reopen the app.")
@@ -942,7 +829,7 @@ class App:
                 if b.contains(event.x, event.y):
                     b.click()
                     return
-        if self._transition is None and self.screen is not None:
+        if self._next_screen is None and self.screen is not None:
             self.screen.on_click(event.x, event.y)
 
     def _on_key(self, event):
@@ -951,7 +838,7 @@ class App:
         if event.keysym in ("f", "F"):
             self.show_fps = not self.show_fps
             return
-        if self._transition is None and self.screen is not None:
+        if self._next_screen is None and self.screen is not None:
             self.screen.on_key(event.keysym)
 
     def _collect_pointer(self, now):
@@ -998,8 +885,9 @@ class App:
         self._last_tick = start
         try:
             self.pointer = self._collect_pointer(start)
-            if self._transition is not None:
-                self._run_transition()
+            if self._next_screen is not None:
+                factory, self._next_screen = self._next_screen, None
+                self._set_screen(factory())
                 self.pointer.segments.clear()
                 self.pointer.events.clear()
             if self.screen is not None:

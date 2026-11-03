@@ -410,7 +410,7 @@ class GameRenderer:
     # ------------------------------------------------------------------ HUD
     def _build_hud(self):
         c, T, f, col = self.canvas, self.TAG, self.fonts, config.COLORS
-        draw_panel(c, (T,), self.width / 2, 44, self.width - 40, 66, radius=22, fill="#140f36")
+        draw_panel(c, (T,), self.width / 2, 44, self.width - 40, 66)
         self._label(70, 26, "SCORE")
         self.score_text = c.create_text(70, 52, text="0", anchor="w", fill=col["gold"],
                                         font=f.get(28, "bold"), tags=(T,))
@@ -588,13 +588,7 @@ class GameRenderer:
             if isinstance(ev, FruitSliced):
                 f = ev.fruit
                 kind = f.kind
-                self.particles.emit(f.x, f.y, kind.juice, 16, speed=(100, 380), size=(2.5, 6))
-                self.particles.emit(f.x, f.y, kind.flesh, 8, speed=(60, 220), size=(2, 4))
-                self.particles.emit(f.x, f.y, "#ffffff", 6, speed=(200, 500), size=(1.5, 3),
-                                    life=(0.15, 0.3), gravity=0, drag=4)
-                if kind.special:
-                    self.particles.emit(f.x, f.y, col["gold"], 24, speed=(150, 480), size=(2, 5),
-                                        gravity=150, drag=2.5)
+                self.particles.emit(f.x, f.y, kind.juice, 10, speed=(100, 320), size=(2.5, 5))
                 self._add_splat(f.x, f.y, kind.name)
                 self._add_text(f.x, f.y - 20, f"+{ev.points}", col["gold"] if kind.special else col["text"],
                                22 if kind.special else 18)
@@ -602,10 +596,8 @@ class GameRenderer:
                 self.sound.play("splat")
             elif isinstance(ev, BombHit):
                 b = ev.bomb
-                for color, n, spd in (("#ffffff", 10, (300, 700)), (col["warning"], 30, (150, 520)),
-                                      (col["danger"], 24, (100, 420)), ("#6b6f80", 16, (40, 160))):
-                    self.particles.emit(b.x, b.y, color, n, speed=spd, size=(2.5, 7), gravity=200, drag=2.2)
-                self.shake_time, self.shake_mag = 0.45, 12
+                self.particles.emit(b.x, b.y, col["warning"], 20, speed=(150, 450), size=(3, 6), gravity=200)
+                self.shake_time, self.shake_mag = 0.3, 6
                 self.warning_time = 0.8
                 self.heart_shake = 0.5
                 self._add_text(b.x, b.y - 30, "-1 LIFE", col["danger"], 26, life=1.1)

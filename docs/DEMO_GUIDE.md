@@ -28,7 +28,7 @@ GUI, OpenCV for the camera, MediaPipe for hand landmarks and SQLite for scores."
 
 ### 3. Gameplay (3 min)
 - Hover **PLAY**. Countdown 3-2-1-SLICE!
-- Slice fruit with fast swipes and point out the glowing trail, juice
+- Slice fruit with fast swipes and point out the knife trail, juice
   particles, the splitting halves and the floating points.
 - Cut several fruit in one swipe → **COMBO** bonus.
 - Show the HUD: score, level, timer, combo, lives.

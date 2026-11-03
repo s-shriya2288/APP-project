@@ -13,7 +13,7 @@ Each stage was finished and tested before the next one started.
 | Stage | Goal | What was built | How it was tested |
 |---|---|---|---|
 | 0. Environment | Find a working Python + MediaPipe combination | Python 3.11 virtual env; `mediapipe==0.10.14` (still ships `mp.solutions.hands`); `opencv-contrib-python==4.10.0.84` (newer 5.x bundles SDL2, which clashes with pygame on macOS) | `python -c "import cv2, mediapipe"`, model loads |
-| 1. Window + menu | Tkinter app skeleton | `App`, `Screen`, `MainMenuScreen`, `CanvasButton`, fade transitions, `config.py` | Window opens, buttons react to mouse |
+| 1. Window + menu | Tkinter app skeleton | `App`, `Screen`, `MainMenuScreen`, `CanvasButton`, `config.py` | Window opens, buttons react to mouse |
 | 2. Webcam | Camera without freezing the UI | `HandTracker` thread, `queue.Queue`, preview image, status messages, permission/disconnect handling | Fake camera test: frames flow, disconnect → auto-reconnect, `stop()` releases the camera |
 | 3. Hand tracking | 21 landmarks | MediaPipe Hands on the worker thread, mirrored frames, skeleton overlay in the preview | Model loads and processes frames at camera rate |
 | 4. Blade + trail | Fingertip becomes a blade | `GestureDetector` (mapping, One Euro filter, speed, segments), `BladeTrail`, hand cursor, dwell-click | Unit tests: mapping clamps, jitter reduced, swipe speed, hand-lost reset |

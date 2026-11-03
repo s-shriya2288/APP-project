@@ -1,302 +1,171 @@
-# 🎮 Gaming Arcade — GESTURE SLICE
+# Gaming Arcade: Gesture Slice
 
-**A real-time, hand-gesture controlled fruit slicing game for the desktop.**
-Your webcam watches your hand, MediaPipe finds your index fingertip, and that
-fingertip becomes a glowing blade. Swipe through the fruit, dodge the bombs,
-chain combos, and land on the leaderboard. No mouse, keyboard or controller needed.
+Our project for **Advanced Programming Practices (APP)**.
 
-Built with **Python · Tkinter · OpenCV · MediaPipe · NumPy · Pillow · SQLite**
-as an *Advanced Programming Practices (APP)* college project.
+Gesture Slice is a fruit slicing game made in **Python with Tkinter**. You play it with your
+**hand in front of the webcam**. The program finds your index fingertip and uses it as a knife.
+Swipe through the fruit to cut it, and stay away from the bombs.
 
 ![Main menu](docs/screenshots/01_menu.png)
 
-| Gameplay | Pause by gesture |
-|---|---|
-| ![Gameplay](docs/screenshots/04_gameplay.png) | ![Paused](docs/screenshots/10_gesture_paused.png) |
-| **Game over** | **Leaderboard** |
-| ![Game over](docs/screenshots/07_game_over.png) | ![Leaderboard](docs/screenshots/08_leaderboard.png) |
-
----
-
-## Contents
-
-1. [Features](#features)
-2. [Quick start](#quick-start)
-3. [How to play](#how-to-play)
-4. [Project structure](#project-structure)
-5. [Architecture](#architecture)
-6. [How it works (short version)](#how-it-works-short-version)
-7. [Testing](#testing)
-8. [Build a double-click desktop app](#build-a-double-click-desktop-app)
-9. [Website (Vercel)](#website-vercel)
-10. [Troubleshooting](#troubleshooting)
-11. [APP concepts demonstrated](#app-concepts-demonstrated)
-
-Detailed documentation lives in [`docs/`](docs/):
-
-| Document | What it explains |
-|---|---|
-| [ARCHITECTURE.md](docs/ARCHITECTURE.md) | Every module and class, threading model, frame loop |
-| [HOW_IT_WORKS.md](docs/HOW_IT_WORKS.md) | Gesture detection, smoothing, collision maths, physics, difficulty, performance |
-| [DATABASE.md](docs/DATABASE.md) | SQLite schema, ER diagram, queries |
-| [WORKFLOW.md](docs/WORKFLOW.md) | Development stages, runtime workflow, Git + CI workflow |
-| [DEMO_GUIDE.md](docs/DEMO_GUIDE.md) | Step-by-step script for the APP project demonstration |
-
----
-
 ## Features
 
-**Hand-gesture control (primary input)**
-- Webcam capture with OpenCV on a **background thread**, MediaPipe Hands with all **21 landmarks**
-- Index fingertip (landmark 8) is the blade, with a mirrored image so the movement feels natural
-- **One Euro filter** smoothing: no jitter when still, no lag on fast swipes
-- Velocity-based slicing: only *fast* movements cut, slow ones just aim
-- **Open palm held 0.7 s → pause**, **fist held 0.7 s → resume**, with an on-cursor progress ring
-- Menus are hands-free too: **hover a fingertip on a button for 1.1 s to press it**
-- Live camera preview with the hand skeleton, plus a tracking-status indicator
+- Hand tracking with the webcam (OpenCV + MediaPipe)
+- Index fingertip = knife; a fast swipe cuts the fruit
+- Open palm = pause, fist = resume
+- Hover your finger on a button for about 1 second to press it (no mouse needed)
+- Score, combos, levels, 3 lives, and bombs
+- Leaderboard and player stats saved in a SQLite database
+- Mouse mode if you don't have a webcam
 
-**Game**
-- 7 fruit types (golden star = special, 20 pts), bombs with burning fuses
-- Real projectile physics with gravity, spin, and fruit splitting into two halves along your swipe direction
-- Juice particles, sparks, juice splats, floating score text, screen shake, red warning flash
-- Combos (several fruit in one swipe = bonus), 3 lives, countdown timer, endless levels
-- Animated score counter, countdown "3-2-1-SLICE!", level-up banners, procedural sound effects
+![Gameplay](docs/screenshots/04_gameplay.png)
 
-**App**
-- Main menu, How to Play, Leaderboard, Settings, Gameplay, Pause and Game Over screens with fade transitions
-- **SQLite**: players, game sessions, high scores, statistics and settings
-- Steady **60 FPS** Tkinter rendering (see [performance notes](docs/HOW_IT_WORKS.md#7-performance-how-it-stays-at-60-fps))
-- Robust error handling: no webcam, permission denied, camera unplugged, missing packages, database errors.
-  The game always falls back to **mouse control**.
+## How to run
 
----
-
-## Quick start
-
-> **Python 3.9 to 3.12** is required (3.11 recommended). MediaPipe 0.10.14 has no
-> wheels for Python 3.13 yet.
-
-### 1. Get the code
+You need **Python 3.9 to 3.12** (we used 3.11). MediaPipe doesn't work on 3.13 yet.
 
 ```bash
 git clone https://github.com/s-shriya2288/APP-project.git
 cd APP-project
-```
-
-### 2. Create and activate a virtual environment
-
-macOS / Linux:
-
-```bash
 python3.11 -m venv .venv
-source .venv/bin/activate
-```
-
-Windows (PowerShell):
-
-```powershell
-py -3.11 -m venv .venv
-.venv\Scripts\Activate.ps1
-```
-
-You'll see `(.venv)` at the start of the prompt when it's active. Run `deactivate` to leave it.
-
-### 3. Install the dependencies
-
-```bash
+source .venv/bin/activate        # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
-```
-
-### 4. Run the game
-
-```bash
 python main.py
 ```
 
-The first time, **macOS asks for camera permission** for your Terminal/IDE.
-Click *Allow*. The game keeps retrying for ~30 s, so you don't need to restart.
-
----
+The first time you run it, macOS asks if Terminal can use the camera. Click **Allow**.
 
 ## How to play
 
-| Action | Hand gesture | Mouse / keyboard fallback |
-|---|---|---|
-| Aim the blade | Point your index finger at the camera | Move the mouse |
-| Slice | Swipe your fingertip **fast** through fruit | Move the mouse fast |
-| Pause | Hold an **open palm** still for 0.7 s | `Space`, `P`, `Esc` or the II button |
-| Resume | Make a **fist** and hold it 0.7 s | `Space` or the Resume button |
-| Press a menu button | Hover the fingertip over it for 1.1 s | Click |
-| Show FPS counter | – | `F` |
+| Action | What to do |
+|---|---|
+| Move the knife | Point your index finger at the camera |
+| Cut fruit | Swipe fast through it (slow moves only aim) |
+| Pause | Hold an open palm still for a moment |
+| Resume | Make a fist and hold it |
+| Press a button | Keep your fingertip on it until the bar fills |
+| Keyboard | Space / P = pause, Esc = back to menu |
 
-**Scoring:** normal fruit 10 · golden star 20 · combo of *N* fruit in one swipe = +(N − 1) × 15 bonus.
-Hitting a bomb costs one of your **3 lives**. The round ends when the timer
-(60/90/120 s) reaches zero or you run out of lives.
+Points: normal fruit = 10, golden star = 20, and cutting 2 or more fruits in one swipe gives a combo bonus.
+Hitting a bomb costs one life. The round ends when time runs out or you lose all 3 lives.
 
-**Levels:** 1 = slow fruit · 2 = faster fruit · 3 = more bombs · 4+ = faster,
-more frequent, bigger waves.
+## Technologies used
 
----
+| Library | What we used it for |
+|---|---|
+| **Tkinter** | The window, all screens, drawing the game, the game loop |
+| OpenCV | Reading frames from the webcam |
+| MediaPipe | Finding the 21 points of the hand in each frame |
+| NumPy | Maths (distances, smoothing) and making sound effects |
+| Pillow | Drawing the fruit and button images |
+| SQLite (`sqlite3`) | Saving players, games, high scores and stats |
+| pygame | Only for playing sounds |
+
+## Where we used Tkinter
+
+Most of the Tkinter code is in [`gesture_slice/ui.py`](gesture_slice/ui.py).
+
+- `tk.Tk()` creates the main window.
+- One big `tk.Canvas` is used for everything. Fruit, bombs, buttons, the score and the knife trail
+  are canvas items made with `create_image`, `create_text`, `create_line` and `create_oval`,
+  and moved every frame with `canvas.coords()`.
+- `canvas.bind("<Motion>")`, `bind("<Button-1>")` and `root.bind("<Key>")` handle the mouse and keyboard.
+- `tk.Entry` is the text box for the player name on the Settings screen.
+- **The game loop:** `root.after(16, self._tick)` runs about 60 times a second. Each time it reads
+  the hand position, updates the game and redraws.
+- `ImageTk.PhotoImage` shows the small camera preview in the corner.
+
+**Why we use a thread:** Tkinter can only run on one thread, and reading the webcam is slow. If we
+read the camera inside the game loop, the window would freeze. So the camera and MediaPipe run in a
+**background thread** (`hand_tracking.py`), which puts the hand position into a `queue.Queue`.
+The Tkinter loop just takes the newest value from the queue every frame.
+
+## How it works
+
+```
+Webcam -> hand_tracking.py -> gesture_detection.py -> game_engine.py -> ui.py (Tkinter window)
+          (OpenCV+MediaPipe)   (finger position,       (rules, score,       |
+           background thread)   palm / fist)            collisions)         v
+                                                                       database.py (SQLite)
+```
+
+1. **hand_tracking.py** reads a frame, flips it like a mirror and finds the hand landmarks.
+2. **gesture_detection.py** maps the fingertip to the screen, smooths it (One Euro filter),
+   works out the speed, and checks if the hand is an open palm or a fist.
+3. **game_engine.py** moves the fruit with gravity, checks if the swipe line touches a fruit,
+   and updates the score, combos, lives and level.
+4. **ui.py** draws everything on the Tkinter canvas.
+5. **database.py** saves the result when the game ends.
+
+**Collision check:** in each frame the fingertip moves from point A to point B. A fruit is cut if
+the shortest distance from its centre to the line AB is less than its radius, and the finger
+was moving fast enough. More details are in [docs/HOW_IT_WORKS.md](docs/HOW_IT_WORKS.md).
 
 ## Project structure
 
 ```
 APP-project/
-├── main.py                    # entry point: dependency check, starts the App
-├── gesture_slice/             # the game package
-│   ├── config.py              # every constant (sizes, colours, timings, rules)
-│   ├── ui.py                  # Tkinter App, main loop, widgets, all screens
-│   ├── game_engine.py         # Game (rules/logic) + GameRenderer (drawing, HUD)
-│   ├── hand_tracking.py       # HandTracker: webcam + MediaPipe on a thread
-│   ├── gesture_detection.py   # GestureDetector: smoothing, speed, palm/fist
-│   ├── fruit.py               # Fruit, Bomb, FruitHalf + collision maths
-│   ├── particle_effects.py    # particles, blade trail, floating text, splats
-│   ├── database.py            # DatabaseManager (SQLite)
-│   ├── sprites.py             # procedural graphics with Pillow + NumPy
-│   ├── sound.py               # procedural sound effects (optional pygame)
-│   └── utils.py               # maths / colour helpers
-├── tests/                     # 36 unit tests + an automated end-to-end UI run
-├── tools/canvas_snapshot.py   # renders the Tk canvas to PNG (screenshots)
-├── scripts/                   # build the double-click desktop app
-├── docs/                      # documentation + screenshots
-├── website/                   # project website deployed on Vercel
-├── assets/                    # optional custom fruit images
-├── .github/workflows/ci.yml   # GitHub Actions: lint + tests on every push
-├── requirements.txt
-└── vercel.json
+├── main.py                  starts the app
+├── gesture_slice/
+│   ├── config.py            all settings and constants
+│   ├── ui.py                Tkinter window and screens
+│   ├── game_engine.py       game rules + drawing the game
+│   ├── fruit.py             Fruit, Bomb classes and collision maths
+│   ├── hand_tracking.py     webcam + MediaPipe (background thread)
+│   ├── gesture_detection.py fingertip, smoothing, palm/fist
+│   ├── particle_effects.py  juice drops and knife trail
+│   ├── sprites.py           draws fruit/button images with Pillow
+│   ├── sound.py             sound effects
+│   ├── database.py          SQLite
+│   └── utils.py             small helper functions
+├── tests/                   unit tests
+├── docs/                    extra documentation and screenshots
+├── website/                 project web page (Vercel)
+└── scripts/                 build the desktop app
 ```
 
----
+## Database
 
-## Architecture
-
-```mermaid
-flowchart LR
-    subgraph CAM["Camera thread (hand_tracking.py)"]
-        A[Webcam<br/>OpenCV] --> B[Mirror frame]
-        B --> C[MediaPipe Hands<br/>21 landmarks]
-    end
-    C -- "HandSample<br/>(thread-safe queue)" --> D
-    subgraph MAIN["Tkinter main thread - 60 FPS root.after loop (ui.py)"]
-        D[GestureDetector<br/>map + One Euro + speed<br/>palm / fist hold] --> E[PointerState]
-        M[Mouse fallback<br/>MouseDetector] --> E
-        E --> F[Current screen]
-        F --> G[Game<br/>physics, collisions,<br/>score, lives, levels]
-        G -- events --> H[GameRenderer<br/>sprites, particles,<br/>trail, HUD]
-        H --> I[(Tk Canvas)]
-        G -- final stats --> J[(SQLite<br/>DatabaseManager)]
-    end
-    C -. preview image .-> I
-```
-
-Full details, class diagram and the per-frame sequence are in
-[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
-
----
-
-## How it works (short version)
-
-- **Gesture → blade.** Each camera frame gives landmark 8 (index tip) in 0–1
-  coordinates. An inner box of the camera image is stretched over the whole
-  game window, smoothed with a One Euro filter, and the movement since the
-  previous frame becomes a *cut segment* with a speed in px/s.
-- **Slicing = segment vs. circle.** A fruit is a circle. The blade cuts it
-  when the shortest distance from the circle centre to the cut segment is ≤
-  the radius *and* the segment speed is above the sensitivity threshold.
-- **Pause / resume.** Fingers are classified as extended or curled by
-  comparing wrist→tip and wrist→middle-joint distances. All four extended =
-  open palm, none extended = fist. The pose must be held still for 0.7 s.
-- **Smooth at 60 FPS.** The camera never blocks the UI (background thread +
-  queue). Images are rendered once at start-up, canvas items are pooled and
-  only updated when something changes, and the backdrop is vector-drawn
-  because repainting a full-screen photo costs ~30 ms in Tk.
-
-Read [docs/HOW_IT_WORKS.md](docs/HOW_IT_WORKS.md) for the maths and code walk-through.
-
----
+There are 4 main tables: `players`, `game_sessions`, `high_scores` and `game_statistics`
+(plus `settings`). Every finished game is saved in one transaction. See [docs/DATABASE.md](docs/DATABASE.md).
 
 ## Testing
 
 ```bash
-python -m unittest discover -s tests -v     # 36 unit tests (no camera / window needed)
-python tests/manual_ui_smoke.py docs/screenshots   # opens the real window, plays itself
+python -m unittest discover -s tests -v
 ```
 
-The smoke test drives every screen, slices fruit with scripted swipes, feeds
-fake hand landmarks through the real gesture pipeline (open palm → pause, fist
-→ resume), checks that no exception occurs, reports the frame rate and
-saves the screenshots used in this README.
+There are 36 unit tests for the collision maths, physics, game rules, gestures and database.
+GitHub Actions runs them on every push ([.github/workflows/ci.yml](.github/workflows/ci.yml)).
 
-GitHub Actions runs lint + unit tests on every push
-([`.github/workflows/ci.yml`](.github/workflows/ci.yml)).
-
----
-
-## Build a double-click desktop app
+## Making a desktop app
 
 ```bash
 pip install -r requirements-dev.txt
-./scripts/build_desktop_app.sh        # macOS / Linux  -> dist/GestureSlice(.app)
-scripts\build_desktop_app.bat         # Windows        -> dist\GestureSlice\GestureSlice.exe
+./scripts/build_desktop_app.sh      # Windows: scripts\build_desktop_app.bat
 ```
 
-This uses PyInstaller and bundles Python, the libraries and the MediaPipe
-hand model into one app you can launch without a terminal (about 30 s to
-build, ~260 MB, mostly OpenCV and MediaPipe).
+This uses PyInstaller to make `dist/GestureSlice.app` (or `GestureSlice.exe` on Windows),
+which you can open by double-clicking it.
 
-- **macOS:** double-click `dist/GestureSlice.app` (or drag it into *Applications*).
-  On first launch macOS asks for camera permission for *Gesture Slice*. Click Allow.
-  On a different Mac, the unsigned app must be opened once with
-  *right-click → Open* to get past Gatekeeper.
-- **Windows:** run `dist\GestureSlice\GestureSlice.exe`.
-- The packaged app stores its database in `~/.gesture_slice/`, because the app bundle itself is read-only.
-- `dist/` and `build/` are git-ignored, so build the app on the computer that will run it.
-
----
-
-## Website (Vercel)
-
-Gesture Slice is a **desktop application**. It needs a real window (Tkinter)
-and access to your webcam, so it cannot run on a web server. The
-[`website/`](website/) folder is the project's **showcase site** (features,
-architecture, how to download and run). It's deployed on Vercel:
-
-1. Import this GitHub repository in Vercel (**Add New → Project**).
-2. Keep the default settings. `vercel.json` already tells Vercel to serve the
-   static `website/` folder (no build step).
-3. Click **Deploy**.
-
----
-
-## Troubleshooting
+## Problems we faced
 
 | Problem | Fix |
 |---|---|
-| "Camera unavailable" | Close other apps using the camera (Zoom, Teams, browser tabs). On macOS: *System Settings → Privacy & Security → Camera* → enable your Terminal / VS Code / PyCharm, then try again. Try *Settings → Camera 1* if you have several cameras. |
-| `No matching distribution found for mediapipe==0.10.14` | Your Python is too new or too old. Use Python 3.9–3.12 (3.11 recommended). |
-| Hand not detected | Good lighting, plain background, keep your hand 40–80 cm from the camera, palm facing the camera. |
-| Slicing feels hard / too easy | *Settings → Slice sensitivity* (Low / Medium / High). |
-| No sound | Install pygame (`pip install pygame`) or check *Settings → Sound effects*. |
-| `ModuleNotFoundError: tkinter` (Linux) | `sudo apt install python3-tk` |
+| Window froze while reading the camera | Moved the camera to a background thread with a queue |
+| Knife was shaky | Added a One Euro filter to smooth the fingertip |
+| Pause triggered by accident | The palm/fist has to be held for 0.7 s before it counts |
+| Camera blocked on macOS | System Settings → Privacy & Security → Camera → turn on the app/Terminal |
+| `mediapipe` doesn't install | Use Python 3.9 to 3.12 |
 
----
+## More docs
 
-## APP concepts demonstrated
-
-| Concept | Where |
-|---|---|
-| Object-oriented design (classes, inheritance, encapsulation) | `GameObject → Fruit / Bomb / FruitHalf`, `Screen → MainMenuScreen …`, `HandTracker`, `GestureDetector`, `DatabaseManager`, `Particle` |
-| Multithreading + thread-safe communication | `HandTracker` thread → `queue.Queue` → main thread; `threading.Lock` for the preview |
-| Event-driven GUI programming | Tkinter bindings (`<Motion>`, `<Button-1>`, `<Key>`), `root.after` game loop |
-| Computer vision | OpenCV capture, MediaPipe hand landmarks, gesture classification |
-| Numerical computing | NumPy distance maths, procedural images and sound synthesis |
-| Database integration | SQLite schema with foreign keys, UPSERT, transactions, indices |
-| Algorithms | Segment–circle intersection, One Euro filter, projectile physics, object pooling |
-| Error handling | Camera/permission/disconnect recovery, missing packages, DB fallback to memory |
-| Testing | `unittest` suite + automated end-to-end UI test + GitHub Actions CI |
-
----
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md): classes and how the files connect
+- [docs/HOW_IT_WORKS.md](docs/HOW_IT_WORKS.md): gestures, collision and physics
+- [docs/DATABASE.md](docs/DATABASE.md): tables and queries
+- [docs/WORKFLOW.md](docs/WORKFLOW.md): how we built it step by step
+- [docs/DEMO_GUIDE.md](docs/DEMO_GUIDE.md): what to show in the demo
 
 ## License
 
-[MIT](LICENSE)
+MIT

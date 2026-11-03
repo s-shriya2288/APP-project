@@ -9,7 +9,7 @@ in one direction: **camera → gestures → game rules → drawing → database*
 |---|---|---|
 | `main.py` | `main()`, `check_dependencies()` | Entry point. Checks the Python version and the required packages, then starts `App`. |
 | `config.py` | constants | Every tunable number: window size, FPS, colours, gravity, scoring, gesture timings, camera settings, default settings. |
-| `ui.py` | `App`, `Screen`, `MainMenuScreen`, `HowToPlayScreen`, `LeaderboardScreen`, `SettingsScreen`, `GameScreen`, `GameOverScreen`, `CanvasButton`, `FontBook`, `PointerState` | The Tkinter application: window, the 60 FPS `root.after` loop, input merging (hand + mouse), screen switching with fade transitions, the status/preview overlay. |
+| `ui.py` | `App`, `Screen`, `MainMenuScreen`, `HowToPlayScreen`, `LeaderboardScreen`, `SettingsScreen`, `GameScreen`, `GameOverScreen`, `CanvasButton`, `FontBook`, `PointerState` | The Tkinter application: window, the 60 FPS `root.after` loop, input merging (hand + mouse), screen switching, the status/preview overlay. |
 | `game_engine.py` | `Game`, `GameRenderer`, `GameStats`, `LevelSettings`, event classes | `Game` = pure rules (spawning, physics update, collisions, score, combos, lives, timer, levels). `GameRenderer` = draws a `Game` on the canvas and turns its events into effects and sounds. |
 | `hand_tracking.py` | `HandTracker`, `HandSample`, `TrackerStatus` | Opens the webcam, runs MediaPipe Hands on a background thread, publishes `HandSample`s through a `queue.Queue`, keeps a small preview image, recovers from disconnections. |
 | `gesture_detection.py` | `GestureDetector`, `MouseDetector`, `OneEuroFilter`, `MotionTracker`, `Gesture`, `PointerFrame` | Turns landmarks into a smoothed blade position, cut segments with speed, and pause/resume commands (pose classification + hold-to-confirm). |
@@ -176,9 +176,9 @@ stateDiagram-v2
     MainMenu --> [*]: Exit
 ```
 
-Every screen is a `Screen` subclass. `App.switch_to()` fades the window out,
-calls `destroy()` on the old screen (deleting all its canvas items by tag),
-`build()`s the new one and fades back in.
+Every screen is a `Screen` subclass. `App.switch_to()` remembers the next screen; at the
+start of the next frame it calls `destroy()` on the old screen (deleting all its
+canvas items by tag) and `build()`s the new one.
 
 ## 6. Design decisions
 

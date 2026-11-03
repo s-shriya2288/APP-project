@@ -67,7 +67,7 @@ speed = distance(previous, current) / (t_current − t_previous)     [px / s]
 - When the hand disappears, the filter and the previous point are reset for
   the same reason.
 - Every sample is also added to the `BladeTrail`, which draws the last 0.2 s
-  of positions as tapered glowing line segments (bright when fast enough to
+  of positions as tapered line segments (bright when fast enough to
   cut, dim blue when only aiming).
 
 ## 4. Gesture recognition (pause / resume)
@@ -168,7 +168,7 @@ slow. These numbers were measured on an Apple-silicon Mac:
 | **All images pre-rendered** at start-up (36 rotation frames per fruit) | Rotating or converting images while playing is far too slow. Spinning is just switching between ready-made frames. |
 | **Object pools** for particles (260) and trail segments | Creating/deleting thousands of canvas items per second is slow. Pooled items are re-used and hidden when idle. |
 | **`CanvasState`**: only call `itemconfigure`/`coords` when a value changes | Every Tk call repaints its area, even with an identical value. Skipping redundant calls took idle gameplay from 30 to 60 FPS. |
-| **Vector backdrop and panels** instead of full-window images | Tk repaints the bounding box of all changes. Once fruit are everywhere that's the whole window, and repainting a 1100×700 photo costs ~30 ms. Solid shapes cost ~1 ms. Gameplay while slicing went from 30 to 60 FPS. |
+| **Plain shapes for the background and panels** instead of full-window images | Tk repaints the bounding box of all changes. Once fruit are everywhere that's the whole window, and repainting a 1100×700 photo costs ~30 ms. Solid shapes cost ~1 ms. Gameplay while slicing went from 30 to 60 FPS. |
 | Caps on everything | ≤ 14 flying objects, ≤ 10 splats, ≤ 12 floating texts, lifetimes on every effect. |
 
 Press **F** in the game to show the live FPS and camera FPS.

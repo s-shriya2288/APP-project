@@ -35,33 +35,30 @@ DATA_DIR = (Path.home() / ".gesture_slice") if getattr(sys, "frozen", False) els
 DB_PATH = DATA_DIR / "gesture_slice.db"
 
 # --------------------------------------------------------------------------
-# Colour palette (dark neon arcade theme)
+# Colour palette (simple flat colours)
 # --------------------------------------------------------------------------
 COLORS = {
-    "bg_top": "#1a0f3d",
-    "bg_bottom": "#04050d",
-    "bg_flat": "#0b0920",          # used by Tk widgets that cannot show images
-    "panel": "#1b1640",
-    "panel_edge": "#4a3b99",
-    "text": "#f5f3ff",
-    "muted": "#a59fd0",
-    "dim": "#5d5791",
-    "accent": "#ff4fa3",           # pink
-    "accent2": "#36e2ff",          # cyan
-    "gold": "#ffd447",
-    "danger": "#ff3b5c",
-    "success": "#3df5a1",
-    "warning": "#ffb020",
+    "bg_top": "#22313f",
+    "bg_bottom": "#22313f",
+    "bg_flat": "#22313f",          # used by Tk widgets such as the name entry
+    "panel": "#2c3e50",
+    "panel_edge": "#4a6278",
+    "text": "#ecf0f1",
+    "muted": "#a0aeb8",
+    "dim": "#6c7a89",
+    "accent": "#e67e22",           # orange
+    "accent2": "#3498db",          # blue
+    "gold": "#f1c40f",
+    "danger": "#e74c3c",
+    "success": "#2ecc71",
+    "warning": "#f39c12",
     "blade_core": "#ffffff",
-    "blade_glow": "#36e2ff",
-    "blade_idle": "#6b7bbd",
+    "blade_glow": "#3498db",
+    "blade_idle": "#7f8c8d",
 }
 
 # Font families tried in order; the first one installed is used.
-FONT_CANDIDATES = (
-    "Avenir Next", "Segoe UI", "Helvetica Neue", "Ubuntu",
-    "Noto Sans", "DejaVu Sans", "Helvetica", "Arial",
-)
+FONT_CANDIDATES = ("Arial", "Helvetica", "DejaVu Sans")
 
 # --------------------------------------------------------------------------
 # Gameplay rules
@@ -130,11 +127,10 @@ DWELL_SECONDS = 1.1                    # hover a button this long to press it by
 # --------------------------------------------------------------------------
 # Visual effects
 # --------------------------------------------------------------------------
-MAX_PARTICLES = 260
+MAX_PARTICLES = 120
 MAX_SPLATS = 10
 SPLAT_LIFETIME = 1.4
 SPRITE_ROTATION_FRAMES = 36            # 10 degree steps for spinning sprites
-FADE_STEPS = 6                         # screen transition fade frames
 
 # --------------------------------------------------------------------------
 # Defaults for the settings stored in the database
